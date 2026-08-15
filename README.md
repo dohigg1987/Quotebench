@@ -4,7 +4,7 @@ QuoteBench is a governed pricing and quoting platform for service and product bu
 
 ## Current release
 
-This repository contains the first executable vertical slice:
+This public repository contains the first executable vertical slice:
 
 - a pure TypeScript pricing engine with zero runtime dependencies
 - integer-minor-unit money and integer-basis-point percentages
@@ -13,10 +13,9 @@ This repository contains the first executable vertical slice:
 - role-based discount caps, minimum fees, recurrence separation and margin controls
 - a responsive quote-building application with explanation traces
 - catalogue, pricing governance, activity and client-document views
-- hand-calculated representative fixtures and requirement-citing tests
-- the complete supplied specification corpus
+- requirement-citing engine and rendered-application tests
 
-External services remain intentionally out of scope for this release. Authentication, tenant persistence, delivery, tracking ingestion, PDF queues, storage, billing and integrations are not simulated as operational services.
+The underlying specification packs and detailed fixture files are intentionally excluded from this public repository. External services also remain out of scope for this release. Authentication, tenant persistence, delivery, tracking ingestion, PDF queues, storage, billing and integrations are not simulated as operational services.
 
 ## Run locally
 
@@ -44,13 +43,11 @@ npm test
 ```text
 app/                         Vinext and Next.js application
 packages/pricing-engine/     pure pricing domain package
-fixtures/                    hand-calculated executable examples
-docs/specs/                  product and delivery specification
 tests/                       engine and rendered-application checks
 ```
 
-The project constitution is recorded in `CLAUDE.md`. The governing rule is that monetary values displayed to a user or rendered in a document originate from the pricing engine and cannot be manually overwritten.
+The project constitution is recorded in `CLAUDE.md`. Its governing rule is that monetary values displayed to a user or rendered in a document originate from the pricing engine and cannot be manually overwritten.
 
 ## Delivery roadmap
 
-The supplied specification defines eleven one-week sprints and 303 requirements. This release establishes the controlled baseline and core product loop. Subsequent pull requests should progress through tenancy and persistence, delivery and tracking, document generation, acceptance, monetisation and integration layers, with each change citing the delivered requirement identifiers.
+The current release establishes the controlled baseline and core product loop. Subsequent pull requests should progress through tenancy and persistence, delivery and tracking, document generation, acceptance, monetisation and integration layers, with each change citing the delivered requirement identifiers.
