@@ -1,0 +1,1 @@
+ALTER TABLE `quotes` ADD `document_json` text DEFAULT '{}' NOT NULL;

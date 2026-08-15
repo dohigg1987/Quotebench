@@ -1,0 +1,9 @@
+import { getChatGPTUser } from "../../chatgpt-auth";
+import { getDocumentWorkspace, listQuoteFiles, saveBrandProfile, saveDocumentTemplate, type BrandProfile, type DocumentTemplate } from "../../../db/document-store";
+import { requireWorkspaceRole } from "../../../db/member-store";
+
+export const dynamic = "force-dynamic";
+const TENANT_ID = "finance-advisory-partners";
+
+export async function GET(request: Request) { const user = await getChatGPTUser(); if (!user) return Response.json({ error: "Sign in with ChatGPT to access document settings." }, { status: 401 }); try { await requireWorkspaceRole(TENANT_ID, user, ["owner", "admin", "quoter"]); const workspace = await getDocumentWorkspace(TENANT_ID); const reference = new URL(request.url).searchParams.get("reference"); return Response.json({ ...workspace, files: reference ? await listQuoteFiles(TENANT_ID, reference) : [] }); } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Document settings are unavailable." }, { status: 403 }); } }
+export async function POST(request: Request) { const user = await getChatGPTUser(); if (!user) return Response.json({ error: "Sign in with ChatGPT to manage document settings." }, { status: 401 }); try { await requireWorkspaceRole(TENANT_ID, user, ["owner", "admin"]); const body = (await request.json()) as { action?: "save_brand" | "save_template"; brand?: BrandProfile; template?: DocumentTemplate }; if (body.action === "save_brand" && body.brand) await saveBrandProfile(TENANT_ID, body.brand); else if (body.action === "save_template" && body.template) await saveDocumentTemplate(TENANT_ID, body.template, user.email); else return Response.json({ error: "A supported document action is required." }, { status: 400 }); return Response.json(await getDocumentWorkspace(TENANT_ID)); } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Document settings could not be saved." }, { status: 409 }); } }

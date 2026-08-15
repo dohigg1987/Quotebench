@@ -1,0 +1,27 @@
+import { acceptQuote } from "../../../../../../db/quote-store";
+
+export const dynamic = "force-dynamic";
+
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ token: string }> },
+) {
+  try {
+    const body = (await request.json()) as { acceptedBy?: string; consent?: boolean; selectedOptionId?: string };
+    const acceptedBy = body.acceptedBy?.trim() ?? "";
+    if (!body.consent || acceptedBy.length < 2 || acceptedBy.length > 120) {
+      return Response.json(
+        { error: "Full name and explicit acceptance confirmation are required." },
+        { status: 400 },
+      );
+    }
+    const { token } = await params;
+    const quote = await acceptQuote(token, acceptedBy, request.headers.get("user-agent"), body.selectedOptionId);
+    return Response.json({ status: quote.status, acceptedAt: quote.acceptedAt });
+  } catch (error) {
+    return Response.json(
+      { error: error instanceof Error ? error.message : "Acceptance could not be recorded." },
+      { status: 409 },
+    );
+  }
+}
