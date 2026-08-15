@@ -78,6 +78,7 @@ export type StoredQuote = {
 };
 
 export type PublicQuote = StoredQuote & {
+  tenantId: string;
   recipientId?: string;
   recipientName?: string;
   recipientEmail?: string;
@@ -89,13 +90,13 @@ export type PublicQuote = StoredQuote & {
     recurringByFrequency: Record<string, number>;
     recurringAnnualisedMinor: number;
   };
-  document: { title: string; introduction: string; scopeHeading: string; brandName?: string; brandInitials?: string; depositMinor?: number; options?: Array<{ id: string; label: string }> };
+  document: { title: string; introduction: string; scopeHeading: string; brandName?: string; brandInitials?: string; depositMinor?: number; options?: Array<{ id: string; label: string }>; pages?:import("./document-store").DocumentPage[] };
 };
 
 export type InternalQuote = StoredQuote & {
   lines: Array<{ itemId: string; quantity: number; discount: number }>;
   answers: { values?: Record<string, string>; complexity?: string; turnaround?: string; quoteDiscount?: number };
-  document: { title: string; introduction: string; scopeHeading: string; brandName?: string; brandInitials?: string; depositMinor?: number; options?: Array<{ id: string; label: string }> };
+  document: { title: string; introduction: string; scopeHeading: string; brandName?: string; brandInitials?: string; depositMinor?: number; options?: Array<{ id: string; label: string }>; pages?:import("./document-store").DocumentPage[] };
   revisionOf: string | null;
 };
 
@@ -554,15 +555,15 @@ export async function getPublicQuote(token: string): Promise<PublicQuote | null>
   const db = await database();
   const { resolveRecipientToken } = await import("./delivery-store");
   const recipient = await resolveRecipientToken(token);
-  const row = await db.prepare(`SELECT id, client_id, reference, client_name, contact_name, contact_email,
+  const query = `SELECT tenant_id, id, client_id, reference, client_name, contact_name, contact_email,
       valid_until, status, currency, one_off_total_minor, recurring_annualised_minor,
       margin_bp, updated_at, owner_email, share_token, issued_at, first_viewed_at,
       accepted_at, accepted_by, pricing_snapshot_json, document_json, rule_set_version,
       superseded_by, declined_at, decline_reason
-    FROM quotes WHERE tenant_id = ? AND ${recipient ? "reference" : "share_token"} = ? AND status IN ('Issued', 'Viewed', 'Accepted', 'Declined', 'Expired', 'Superseded')`)
-    .bind("finance-advisory-partners", recipient?.quote_reference ?? token)
-    .first<{
-      id: string; client_id: string | null; reference: string; client_name: string; contact_name: string; contact_email: string | null;
+    FROM quotes WHERE ${recipient ? "tenant_id = ? AND reference = ?" : "share_token = ?"} AND status IN ('Issued', 'Viewed', 'Accepted', 'Declined', 'Expired', 'Superseded')`;
+  const statement = db.prepare(query);
+  const row = await (recipient ? statement.bind(recipient.tenant_id, recipient.quote_reference) : statement.bind(token)).first<{
+      tenant_id: string; id: string; client_id: string | null; reference: string; client_name: string; contact_name: string; contact_email: string | null;
       valid_until: string; status: StoredQuote["status"]; currency: string;
       one_off_total_minor: number; recurring_annualised_minor: number;
       margin_bp: number | null; updated_at: string; owner_email: string;
@@ -577,12 +578,13 @@ export async function getPublicQuote(token: string): Promise<PublicQuote | null>
       db.prepare("UPDATE quotes SET status = 'Expired', updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(row.id),
       db.prepare(`INSERT INTO quote_events (id, tenant_id, quote_reference, actor_email, event_type, payload_json)
         VALUES (?, ?, ?, 'system', 'quote.expired', ?)`)
-        .bind(crypto.randomUUID(), "finance-advisory-partners", row.reference, JSON.stringify({ validUntil: row.valid_until })),
+        .bind(crypto.randomUUID(), row.tenant_id, row.reference, JSON.stringify({ validUntil: row.valid_until })),
     ]);
     row.status = "Expired";
   }
 
   return {
+    tenantId: row.tenant_id,
     id: row.id,
     clientId: row.client_id,
     reference: row.reference,
@@ -622,9 +624,9 @@ export async function recordQualifiedView(token: string) {
     db.prepare(`INSERT INTO quote_events (
       id, tenant_id, quote_reference, actor_email, event_type, payload_json
     ) VALUES (?, ?, ?, 'recipient', 'quote.viewed', ?)`)
-      .bind(crypto.randomUUID(), "finance-advisory-partners", quote.reference, JSON.stringify({ qualification: "active_for_three_seconds" })),
+      .bind(crypto.randomUUID(), quote.tenantId, quote.reference, JSON.stringify({ qualification: "active_for_three_seconds" })),
   ]);
-  if (!quote.firstViewedAt) { const { emitWebhooks } = await import("./integration-store"); await emitWebhooks("finance-advisory-partners", "quote.first_viewed", { reference: quote.reference }); }
+  if (!quote.firstViewedAt) { const { emitWebhooks } = await import("./integration-store"); await emitWebhooks(quote.tenantId, "quote.first_viewed", { reference: quote.reference }); }
   if (quote.recipientId) { const { recordTrackingEvent } = await import("./delivery-store"); await recordTrackingEvent(token, "open", null, null, null, { qualification: "active_for_three_seconds" }); }
   return { ...quote, status: "Viewed" as const };
 }
@@ -677,10 +679,10 @@ export async function acceptQuote(token: string, acceptedBy: string, userAgent: 
     db.prepare(`INSERT INTO quote_events (
       id, tenant_id, quote_reference, actor_email, event_type, payload_json
     ) VALUES (?, ?, ?, ?, 'quote.accepted', ?)`)
-      .bind(crypto.randomUUID(), "finance-advisory-partners", quote.reference, acceptedBy, JSON.stringify(evidence)),
+      .bind(crypto.randomUUID(), quote.tenantId, quote.reference, acceptedBy, JSON.stringify(evidence)),
   ]);
   const { emitWebhooks } = await import("./integration-store");
-  await emitWebhooks("finance-advisory-partners", "quote.accepted", { reference: quote.reference, acceptedBy });
+  await emitWebhooks(quote.tenantId, "quote.accepted", { reference: quote.reference, acceptedBy });
   const { sendAcceptanceNotifications } = await import("./notification-store");
   await sendAcceptanceNotifications({ reference: quote.reference, clientName: quote.clientName, recipientEmail: quote.recipientEmail ?? quote.contactEmail, ownerEmail: quote.ownerEmail, acceptedBy, token });
   return { ...quote, status: "Accepted" as const, acceptedBy, acceptedAt: evidence.acceptedAt };
@@ -711,9 +713,9 @@ export async function declineQuote(token: string, reason: string | null) {
     db.prepare(`INSERT INTO quote_events (
       id, tenant_id, quote_reference, actor_email, event_type, payload_json
     ) VALUES (?, ?, ?, 'recipient', 'quote.declined', ?)`)
-      .bind(crypto.randomUUID(), "finance-advisory-partners", quote.reference, JSON.stringify({ reason: declineReason })),
+      .bind(crypto.randomUUID(), quote.tenantId, quote.reference, JSON.stringify({ reason: declineReason })),
   ]);
   const { emitWebhooks } = await import("./integration-store");
-  await emitWebhooks("finance-advisory-partners", "quote.declined", { reference: quote.reference, reason: declineReason });
+  await emitWebhooks(quote.tenantId, "quote.declined", { reference: quote.reference, reason: declineReason });
   return { ...quote, status: "Declined" as const, declinedAt: new Date().toISOString(), declineReason };
 }

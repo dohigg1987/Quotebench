@@ -4,11 +4,10 @@ import { money, price } from "../../../packages/pricing-engine/src/index";
 import { listCatalogueItems } from "../../../db/catalogue-store";
 import { getRuleWorkspace } from "../../../db/pricing-rule-store";
 import { listClients, upsertClient } from "../../../db/client-store";
-import { requireWorkspaceRole } from "../../../db/member-store";
+import { requireWorkspaceContext } from "../../../db/workspace-store";
+import { normaliseProposalPages, type DocumentPage } from "../../../db/document-store";
 
 export const dynamic = "force-dynamic";
-
-const TENANT_ID = "finance-advisory-partners";
 
 type SaveQuoteBody = {
   reference?: string;
@@ -21,7 +20,7 @@ type SaveQuoteBody = {
   answers?: Record<string, string>;
   quoteDiscount?: number;
   lines?: Array<{ itemId?: string; quantity?: number; discount?: number }>;
-  document?: { title?: string; introduction?: string; scopeHeading?: string; brandName?: string; brandInitials?: string };
+  document?: { title?: string; introduction?: string; scopeHeading?: string; brandName?: string; brandInitials?: string; depositMinor?:number; options?:Array<{id:string;label:string}>; pages?:DocumentPage[] };
 };
 
 function unauthorised() {
@@ -31,12 +30,13 @@ function unauthorised() {
 export async function GET() {
   const user = await getChatGPTUser();
   if (!user) return unauthorised();
-  const member = await requireWorkspaceRole(TENANT_ID, user, ["owner", "admin", "quoter"]).catch(() => null);
+  const member = await requireWorkspaceContext(user, ["owner", "admin", "quoter"]).catch(() => null);
   if (!member) return Response.json({ error: "forbidden: active workspace membership is required" }, { status: 403 });
 
   try {
-    const [quotes, events, entitlement, catalogueItems, rules, clients] = await Promise.all([listQuotes(TENANT_ID), listQuoteEvents(TENANT_ID), getWorkspaceEntitlement(TENANT_ID), listCatalogueItems(TENANT_ID), getRuleWorkspace(TENANT_ID), listClients(TENANT_ID)]);
-    return Response.json({ quotes, events, entitlement, catalogue: catalogueItems, ruleSet: rules.published, draftRuleSet: rules.draft, clients });
+    const tenantId = member.tenantId;
+    const [quotes, events, entitlement, catalogueItems, rules, clients] = await Promise.all([listQuotes(tenantId), listQuoteEvents(tenantId), getWorkspaceEntitlement(tenantId), listCatalogueItems(tenantId), getRuleWorkspace(tenantId), listClients(tenantId)]);
+    return Response.json({ quotes, events, entitlement, catalogue: catalogueItems, ruleSet: rules.published, draftRuleSet: rules.draft, clients, workspace: { id: tenantId, name: member.workspaceName, currency: member.currency, role: member.role } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Quote storage failed";
     return Response.json({ error: message }, { status: 500 });
@@ -46,7 +46,7 @@ export async function GET() {
 export async function POST(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return unauthorised();
-  const member = await requireWorkspaceRole(TENANT_ID, user, ["owner", "admin", "quoter"]).catch(() => null);
+  const member = await requireWorkspaceContext(user, ["owner", "admin", "quoter"]).catch(() => null);
   if (!member) return Response.json({ error: "forbidden: active workspace membership is required" }, { status: 403 });
 
   try {
@@ -65,16 +65,20 @@ export async function POST(request: Request) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
       return Response.json({ error: "Enter a valid client contact email address." }, { status: 400 });
     }
-    await assertQuoteCapacity(TENANT_ID, reference);
+    const tenantId = member.tenantId;
+    await assertQuoteCapacity(tenantId, reference);
     const document = {
       title: body.document?.title?.trim() || "Transformation delivery partnership",
       introduction: body.document?.introduction?.trim() || "This proposal combines focused strategy, delivery capacity and an ongoing advisory relationship.",
       scopeHeading: body.document?.scopeHeading?.trim() || "A practical route to measurable change",
       brandName: body.document?.brandName?.trim() || "Finance Advisory Partners",
       brandInitials: body.document?.brandInitials?.trim().slice(0, 4).toUpperCase() || "FAP",
+      depositMinor: Math.max(0,Math.round(Number(body.document?.depositMinor??0))),
+      options:(body.document?.options??[]).slice(0,12).map(option=>({id:String(option.id||crypto.randomUUID()),label:String(option.label??"").trim().slice(0,160)})).filter(option=>option.label),
+      pages:normaliseProposalPages(body.document?.pages),
     };
 
-    const [catalogueItems, rules] = await Promise.all([listCatalogueItems(TENANT_ID), getRuleWorkspace(TENANT_ID)]);
+    const [catalogueItems, rules] = await Promise.all([listCatalogueItems(tenantId), getRuleWorkspace(tenantId)]);
     const answers = Object.fromEntries(Object.entries(body.answers ?? {}).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
     const unanswered = (rules.published.questions ?? []).filter((question) => question.required && !answers[question.id]);
     if (status === "Ready" && unanswered.length) {
@@ -92,7 +96,7 @@ export async function POST(request: Request) {
     });
     const priced = price({
       ruleSet: rules.published,
-      currency: "GBP",
+      currency: member.currency,
       role: member.role,
       answers,
       lines,
@@ -104,11 +108,11 @@ export async function POST(request: Request) {
       return Response.json({ error: "Pricing controls blocked this quote.", details: priced.errors }, { status: 422 });
     }
 
-    const client = await upsertClient(TENANT_ID, { id: body.clientId, name: clientName, contactName, contactEmail }, user.email);
+    const client = await upsertClient(tenantId, { id: body.clientId, name: clientName, contactName, contactEmail }, user.email);
     if (!client) throw new Error("The client record could not be resolved.");
     const stored = await upsertQuote({
       id: crypto.randomUUID(),
-      tenantId: TENANT_ID,
+      tenantId,
       ownerEmail: user.email,
       clientId: client.id,
       reference,

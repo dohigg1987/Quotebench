@@ -1,26 +1,24 @@
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { createRuleDraft, getRuleWorkspace, publishRuleDraft, saveRuleDraft } from "../../../db/pricing-rule-store";
 import type { RuleSet } from "../../../packages/pricing-engine/src/index";
-import { requireWorkspaceRole } from "../../../db/member-store";
+import { requireWorkspaceContext } from "../../../db/workspace-store";
 
 export const dynamic = "force-dynamic";
-const TENANT_ID = "finance-advisory-partners";
 
 export async function GET() {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: "Sign in with ChatGPT to access pricing rules." }, { status: 401 });
-  try { await requireWorkspaceRole(TENANT_ID, user, ["owner", "admin"]); } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "forbidden" }, { status: 403 }); }
-  return Response.json(await getRuleWorkspace(TENANT_ID));
+  try { const context = await requireWorkspaceContext(user, ["owner", "admin"]); return Response.json(await getRuleWorkspace(context.tenantId)); } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "forbidden" }, { status: 403 }); }
 }
 
 export async function POST(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: "Sign in with ChatGPT to manage pricing rules." }, { status: 401 });
-  try { await requireWorkspaceRole(TENANT_ID, user, ["owner", "admin"]); } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "forbidden" }, { status: 403 }); }
   try {
+    const context = await requireWorkspaceContext(user, ["owner", "admin"]); const tenantId = context.tenantId;
     const body = (await request.json()) as { action?: string; ruleSet?: RuleSet };
     if (body.action === "create_draft") {
-      return Response.json({ draft: await createRuleDraft(TENANT_ID, user.email) }, { status: 201 });
+      return Response.json({ draft: await createRuleDraft(tenantId, user.email) }, { status: 201 });
     }
     if (!body.ruleSet) return Response.json({ error: "A draft rule set is required." }, { status: 400 });
     if (body.ruleSet.roundingIncrementMinor < 1 || body.ruleSet.quoteMinimumMinor < 0) {
@@ -39,10 +37,10 @@ export async function POST(request: Request) {
     });
     if (invalidModifier) return Response.json({ error: `Modifier ${invalidModifier.name} references a missing question option.` }, { status: 400 });
     if (body.action === "save_draft") {
-      return Response.json({ draft: await saveRuleDraft(TENANT_ID, body.ruleSet, user.email) });
+      return Response.json({ draft: await saveRuleDraft(tenantId, body.ruleSet, user.email) });
     }
     if (body.action === "publish") {
-      return Response.json({ published: await publishRuleDraft(TENANT_ID, body.ruleSet, user.email), draft: null });
+      return Response.json({ published: await publishRuleDraft(tenantId, body.ruleSet, user.email), draft: null });
     }
     return Response.json({ error: "Unsupported pricing rule action." }, { status: 400 });
   } catch (error) {

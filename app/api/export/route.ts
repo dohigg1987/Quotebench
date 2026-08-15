@@ -3,11 +3,10 @@ import { listCatalogueItems } from "../../../db/catalogue-store";
 import { listClients } from "../../../db/client-store";
 import { getRuleWorkspace } from "../../../db/pricing-rule-store";
 import { exportQuoteRecords, getWorkspaceEntitlement, listQuoteEvents, listQuotes } from "../../../db/quote-store";
-import { requireWorkspaceRole } from "../../../db/member-store";
 import { listWorkspaceMembers } from "../../../db/member-store";
+import { requireWorkspaceContext } from "../../../db/workspace-store";
 
 export const dynamic = "force-dynamic";
-const TENANT_ID = "finance-advisory-partners";
 
 function csvValue(value: unknown) {
   const text = value === null || value === undefined ? "" : String(value);
@@ -23,13 +22,14 @@ function toCsv(rows: Array<Record<string, unknown>>) {
 export async function GET(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: "Sign in with ChatGPT to export workspace data." }, { status: 401 });
-  try { await requireWorkspaceRole(TENANT_ID, user, ["owner"]); } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "forbidden" }, { status: 403 }); }
+  let context;
+  try { context = await requireWorkspaceContext(user, ["owner"]); } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "forbidden" }, { status: 403 }); }
   const url = new URL(request.url);
   const format = url.searchParams.get("format");
   const resource = url.searchParams.get("resource");
   const [clients, catalogue, quotes, events, rules, entitlement, completeQuoteRecords, members] = await Promise.all([
-    listClients(TENANT_ID), listCatalogueItems(TENANT_ID), listQuotes(TENANT_ID),
-    listQuoteEvents(TENANT_ID), getRuleWorkspace(TENANT_ID), getWorkspaceEntitlement(TENANT_ID), exportQuoteRecords(TENANT_ID), listWorkspaceMembers(TENANT_ID),
+    listClients(context.tenantId), listCatalogueItems(context.tenantId), listQuotes(context.tenantId),
+    listQuoteEvents(context.tenantId), getRuleWorkspace(context.tenantId), getWorkspaceEntitlement(context.tenantId), exportQuoteRecords(context.tenantId), listWorkspaceMembers(context.tenantId),
   ]);
 
   if (format === "csv") {
@@ -43,6 +43,6 @@ export async function GET(request: Request) {
     return new Response(toCsv(rows), { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="quotebench-${resource}.csv"` } });
   }
 
-  const payload = { exportedAt: new Date().toISOString(), tenantId: TENANT_ID, members, clients, catalogue, quotes: completeQuoteRecords, events, rules, entitlement };
+  const payload = { exportedAt: new Date().toISOString(), tenantId: context.tenantId, workspaceName: context.workspaceName, currency: context.currency, members, clients, catalogue, quotes: completeQuoteRecords, events, rules, entitlement };
   return new Response(JSON.stringify(payload, null, 2), { headers: { "content-type": "application/json; charset=utf-8", "content-disposition": "attachment; filename=quotebench-workspace-export.json" } });
 }

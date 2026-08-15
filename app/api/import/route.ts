@@ -2,10 +2,9 @@ import { getChatGPTUser } from "../../chatgpt-auth";
 import { upsertCatalogueItem } from "../../../db/catalogue-store";
 import { upsertClient } from "../../../db/client-store";
 import type { CatalogueItem, Frequency, PricingBasis } from "../../../packages/pricing-engine/src/index";
-import { requireWorkspaceRole } from "../../../db/member-store";
+import { requireWorkspaceContext } from "../../../db/workspace-store";
 
 export const dynamic = "force-dynamic";
-const TENANT_ID = "finance-advisory-partners";
 const BASES: PricingBasis[] = ["fixed", "per_unit", "cost_plus"];
 const FREQUENCIES: Frequency[] = ["one_off", "weekly", "fortnightly", "monthly", "quarterly", "annually"];
 
@@ -53,8 +52,8 @@ function rowValue(headers: string[], row: string[], mapping: Record<string, stri
 export async function POST(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: "Sign in with ChatGPT to import workspace data." }, { status: 401 });
-  try { await requireWorkspaceRole(TENANT_ID, user, ["owner", "admin"]); } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "forbidden" }, { status: 403 }); }
   try {
+    const context = await requireWorkspaceContext(user, ["owner", "admin"]);
     const body = (await request.json()) as { resource?: "clients" | "catalogue"; csv?: string; mapping?: Record<string, string> };
     if (!body.resource || !body.csv || !body.mapping) {
       return Response.json({ error: "Resource, CSV content and column mapping are required." }, { status: 400 });
@@ -75,7 +74,7 @@ export async function POST(request: Request) {
           const statusValue = rowValue(headers, row, body.mapping, "status");
           if (!name || !contactName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) throw new Error("Name, contact name and a valid email are required.");
           const status = statusValue === "Archived" ? "Archived" : "Active";
-          await upsertClient(TENANT_ID, { name, contactName, contactEmail, status }, user.email);
+          await upsertClient(context.tenantId, { name, contactName, contactEmail, status }, user.email);
         } else {
           const name = rowValue(headers, row, body.mapping, "name");
           const idValue = rowValue(headers, row, body.mapping, "id") || name;
@@ -96,7 +95,7 @@ export async function POST(request: Request) {
           const targetMarginBp = numberValue("targetMarginBp");
           if (pricingBasis === "cost_plus" && (!costMinor || !targetMarginBp)) throw new Error("Cost-plus rows require cost and target margin in minor units and basis points.");
           if (pricingBasis !== "cost_plus" && !basePriceMinor) throw new Error("Fixed and per-unit rows require a base price in minor units.");
-          await upsertCatalogueItem(TENANT_ID, {
+          await upsertCatalogueItem(context.tenantId, {
             id, name, categoryId, unitLabel, pricingBasis, recurrence,
             ...(basePriceMinor === undefined ? {} : { basePriceMinor }),
             ...(costMinor === undefined ? {} : { costMinor }),

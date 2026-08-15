@@ -1,22 +1,20 @@
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { listClients, upsertClient } from "../../../db/client-store";
-import { requireWorkspaceRole } from "../../../db/member-store";
+import { requireWorkspaceContext } from "../../../db/workspace-store";
 
 export const dynamic = "force-dynamic";
-const TENANT_ID = "finance-advisory-partners";
 
 export async function GET() {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: "Sign in with ChatGPT to access clients." }, { status: 401 });
-  try { await requireWorkspaceRole(TENANT_ID, user, ["owner", "admin", "quoter"]); } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "forbidden" }, { status: 403 }); }
-  return Response.json({ clients: await listClients(TENANT_ID) });
+  try { const context = await requireWorkspaceContext(user, ["owner", "admin", "quoter"]); return Response.json({ clients: await listClients(context.tenantId) }); } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "forbidden" }, { status: 403 }); }
 }
 
 export async function POST(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: "Sign in with ChatGPT to manage clients." }, { status: 401 });
-  try { await requireWorkspaceRole(TENANT_ID, user, ["owner", "admin", "quoter"]); } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "forbidden" }, { status: 403 }); }
   try {
+    const context = await requireWorkspaceContext(user, ["owner", "admin", "quoter"]);
     const body = (await request.json()) as { id?: string; name?: string; contactName?: string; contactEmail?: string; status?: "Active" | "Archived" };
     if (!body.name?.trim() || !body.contactName?.trim() || !body.contactEmail?.trim()) {
       return Response.json({ error: "Client name, contact name and contact email are required." }, { status: 400 });
@@ -24,7 +22,7 @@ export async function POST(request: Request) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.contactEmail)) {
       return Response.json({ error: "Enter a valid contact email address." }, { status: 400 });
     }
-    const client = await upsertClient(TENANT_ID, {
+    const client = await upsertClient(context.tenantId, {
       id: body.id,
       name: body.name,
       contactName: body.contactName,

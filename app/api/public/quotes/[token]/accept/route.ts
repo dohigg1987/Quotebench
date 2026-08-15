@@ -1,4 +1,5 @@
 import { acceptQuote } from "../../../../../../db/quote-store";
+import { enforceTokenRateLimit } from "../../../../../../db/workspace-store";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,8 @@ export async function POST(
       );
     }
     const { token } = await params;
+    const rate = await enforceTokenRateLimit(token, "accept", 10);
+    if (!rate.allowed) return Response.json({ error: "Too many acceptance attempts." }, { status: 429, headers: { "retry-after": "60" } });
     const quote = await acceptQuote(token, acceptedBy, request.headers.get("user-agent"), body.selectedOptionId);
     return Response.json({ status: quote.status, acceptedAt: quote.acceptedAt });
   } catch (error) {

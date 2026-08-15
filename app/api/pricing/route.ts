@@ -2,10 +2,9 @@ import { getChatGPTUser } from "../../chatgpt-auth";
 import { listCatalogueItems } from "../../../db/catalogue-store";
 import { getRuleWorkspace } from "../../../db/pricing-rule-store";
 import { money, price, type RuleSet } from "../../../packages/pricing-engine/src/index";
-import { requireWorkspaceRole } from "../../../db/member-store";
+import { requireWorkspaceContext } from "../../../db/workspace-store";
 
 export const dynamic = "force-dynamic";
-const TENANT_ID = "finance-advisory-partners";
 
 type PreviewBody = {
   answers?: Record<string, string>;
@@ -17,11 +16,10 @@ type PreviewBody = {
 export async function POST(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: "Sign in with ChatGPT to price quotes." }, { status: 401 });
-  const member = await requireWorkspaceRole(TENANT_ID, user, ["owner", "admin", "quoter"]).catch(() => null);
-  if (!member) return Response.json({ error: "forbidden: active workspace membership is required" }, { status: 403 });
   try {
+    const context = await requireWorkspaceContext(user, ["owner", "admin", "quoter"]);
     const body = (await request.json()) as PreviewBody;
-    const [catalogueItems, rules] = await Promise.all([listCatalogueItems(TENANT_ID), getRuleWorkspace(TENANT_ID)]);
+    const [catalogueItems, rules] = await Promise.all([listCatalogueItems(context.tenantId), getRuleWorkspace(context.tenantId)]);
     const lines = (body.lines ?? []).flatMap((line) => {
       const item = catalogueItems.find((candidate) => candidate.id === line.itemId);
       if (!item || !Number.isFinite(line.quantity)) return [];
@@ -30,8 +28,8 @@ export async function POST(request: Request) {
     const selectedRuleSet = body.ruleSet ?? rules.published;
     const result = price({
       ruleSet: selectedRuleSet,
-      currency: "GBP",
-      role: member.role,
+      currency: context.currency,
+      role: context.role,
       answers: Object.fromEntries(Object.entries(body.answers ?? {}).filter((entry): entry is [string, string] => typeof entry[1] === "string")),
       lines,
       quoteDiscountBp: money.bp(Number(body.quoteDiscount ?? 0) * 100),

@@ -1,6 +1,29 @@
 import { sql } from "drizzle-orm";
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
+export const tenants = sqliteTable("tenants", {
+  id: text("id").primaryKey(), name: text("name").notNull(), currency: text("currency").notNull(),
+  status: text("status", { enum: ["Active", "SoftDeleted"] }).notNull().default("Active"),
+  trackingEnabled: integer("tracking_enabled", { mode: "boolean" }).notNull().default(true),
+  deletedAt: text("deleted_at"), purgeAfter: text("purge_after"), billingAnniversaryDay: integer("billing_anniversary_day").notNull().default(1),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`), updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const securityEvents = sqliteTable("security_events", {
+  id: text("id").primaryKey(), tenantId: text("tenant_id"), actorEmail: text("actor_email"), eventType: text("event_type").notNull(),
+  resourceType: text("resource_type"), resourceId: text("resource_id"), outcome: text("outcome").notNull(), detailsJson: text("details_json").notNull().default("{}"),
+  requestId: text("request_id"), createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [index("security_events_tenant_created_idx").on(table.tenantId, table.createdAt)]);
+
+export const rateLimits = sqliteTable("rate_limits", {
+  bucketKey: text("bucket_key").primaryKey(), windowStartedAt: text("window_started_at").notNull(), count: integer("count").notNull(), expiresAt: text("expires_at").notNull(),
+});
+
+export const meteredEvents = sqliteTable("metered_events", {
+  id: text("id").primaryKey(), tenantId: text("tenant_id").notNull(), metric: text("metric").notNull(), quantity: integer("quantity").notNull().default(1),
+  sourceId: text("source_id").notNull(), occurredAt: text("occurred_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [uniqueIndex("metered_events_tenant_metric_source_unique").on(table.tenantId, table.metric, table.sourceId), index("metered_events_tenant_time_idx").on(table.tenantId, table.occurredAt)]);
+
 export const quotes = sqliteTable(
   "quotes",
   {

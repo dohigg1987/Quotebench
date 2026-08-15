@@ -1,6 +1,8 @@
 "use client";
+/* Proposal images are tenant-controlled R2 objects and preserve their authored dimensions. */
+/* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import {
   money,
   type CatalogueItem,
@@ -18,8 +20,12 @@ import DeliveryScreen from "./delivery-screen";
 import TemplatesScreen from "./templates-screen";
 import BillingScreen from "./billing-screen";
 import OperatorScreen from "./operator-screen";
+import GovernanceScreen from "./governance-screen";
+import ProposalEditor from "./proposal-editor";
+import type { DocumentPage, DocumentTemplate } from "../db/document-store";
 
-type Screen = "builder" | "quotes" | "clients" | "catalogue" | "rules" | "activity" | "integrations" | "team" | "usage" | "documents" | "delivery" | "templates" | "billing" | "operator";
+type Screen = "builder" | "quotes" | "clients" | "catalogue" | "rules" | "activity" | "integrations" | "team" | "usage" | "documents" | "delivery" | "templates" | "billing" | "governance" | "operator";
+type Workspace = { id:string; name:string; currency:string; role:"owner"|"admin"|"quoter" };
 type SelectedLine = { itemId: string; quantity: number; discount: number };
 type ClientRecord = {
   id: string;
@@ -59,7 +65,7 @@ type SavedQuote = {
 type EditableQuote = SavedQuote & {
   lines: SelectedLine[];
   answers: { values?: Record<string, string>; complexity?: string; turnaround?: string; quoteDiscount?: number };
-  document: { title: string; introduction: string; scopeHeading: string; brandName?: string; brandInitials?: string; depositMinor?: number; options?: Array<{ id: string; label: string }> };
+  document: { title: string; introduction: string; scopeHeading: string; brandName?: string; brandInitials?: string; depositMinor?: number; options?: Array<{ id: string; label: string }>; pages?:DocumentPage[] };
   revisionOf: string | null;
 };
 type SavedEvent = {
@@ -109,6 +115,7 @@ function Sidebar({ screen, setScreen, currentUser, entitlement }: { screen: Scre
     { key: "team", label: "Team & roles", mark: "T" },
     { key: "usage", label: "Usage & limits", mark: "U" },
     { key: "billing", label: "Plans & billing", mark: "B" },
+    { key: "governance", label: "Privacy & security", mark: "G" },
     { key: "operator", label: "Operator cohort", mark: "O" },
   ];
   return (
@@ -151,14 +158,11 @@ function Sidebar({ screen, setScreen, currentUser, entitlement }: { screen: Scre
   );
 }
 
-function Topbar() {
+function Topbar({ workspace, workspaces }: { workspace:Workspace|null; workspaces:Workspace[] }) {
+  async function selectWorkspace(id:string){await fetch("/api/workspaces",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"select",tenantId:id})});window.location.reload();}
   return (
     <header className="topbar">
-      <button className="workspace-switcher">
-        <span className="workspace-dot">F</span>
-        Finance Advisory Partners
-        <span aria-hidden="true">⌄</span>
-      </button>
+      <label className="workspace-switcher"><span className="workspace-dot">{workspace?.name?.charAt(0).toUpperCase()??"Q"}</span><select aria-label="Current workspace" value={workspace?.id??""} onChange={event=>void selectWorkspace(event.target.value)}>{workspaces.length?workspaces.map(item=><option value={item.id} key={item.id}>{item.name}</option>):<option value="">QuoteBench workspace</option>}</select></label>
       <div className="top-actions">
         <button className="top-icon" aria-label="Search">⌕</button>
         <button className="top-icon notification" aria-label="Notifications">○</button>
@@ -175,12 +179,13 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, ruleSe
   const [contactEmail, setContactEmail] = useState(initialQuote?.contactEmail ?? "maya.patel@stellargrid.example");
   const [validUntil, setValidUntil] = useState(initialQuote?.validUntil ?? "2026-09-14");
   const [proposalTitle, setProposalTitle] = useState(initialQuote?.document.title ?? "Transformation delivery partnership");
-  const [proposalIntroduction, setProposalIntroduction] = useState(initialQuote?.document.introduction ?? "This proposal combines focused strategy, delivery capacity and an ongoing advisory relationship. Every commercial value is derived from the published QuoteBench rule set and recorded with its calculation trace.");
-  const [scopeHeading, setScopeHeading] = useState(initialQuote?.document.scopeHeading ?? "A practical route to measurable change");
+  const [proposalIntroduction] = useState(initialQuote?.document.introduction ?? "This proposal combines focused strategy, delivery capacity and an ongoing advisory relationship. Every commercial value is derived from the published QuoteBench rule set and recorded with its calculation trace.");
+  const [scopeHeading] = useState(initialQuote?.document.scopeHeading ?? "A practical route to measurable change");
   const [brandName, setBrandName] = useState(initialQuote?.document.brandName ?? "Finance Advisory Partners");
   const [brandInitials, setBrandInitials] = useState(initialQuote?.document.brandInitials ?? "FAP");
   const [deposit, setDeposit] = useState(String((initialQuote?.document.depositMinor ?? 0) / 100));
   const [proposalOptions, setProposalOptions] = useState<Array<{ id: string; label: string }>>(initialQuote?.document.options ?? []);
+  const [proposalPages,setProposalPages]=useState<DocumentPage[]>(initialQuote?.document.pages??[{id:crypto.randomUUID(),title:"Overview and investment",format:"standard",background:"plain",blocks:[{id:crypto.randomUUID(),type:"text",eyebrow:"Overview",title:"Our proposal",content:initialQuote?.document.introduction??"Describe the client context, desired outcomes and the value of the proposed approach.",enabled:true},{id:crypto.randomUUID(),type:"feature_grid",title:"What is included",layout:"cards",columns:3,enabled:true,items:[{id:crypto.randomUUID(),title:"Outcome",content:"Describe a measurable outcome."},{id:crypto.randomUUID(),title:"Approach",content:"Explain how the work will be delivered."},{id:crypto.randomUUID(),title:"Confidence",content:"Add proof, governance or assurance."}]},{id:crypto.randomUUID(),type:"pricing_table",title:"Scope and investment",display:"full",locked:true,enabled:true},{id:crypto.randomUUID(),type:"terms",title:"Commercial terms",content:"This proposal is valid until the stated expiry date. Fees exclude VAT unless specified.",locked:true,enabled:true},{id:crypto.randomUUID(),type:"signature",title:"Acceptance",content:"The recipient can formally accept or decline this proposal.",locked:true,enabled:true}]}]);
   const [lines, setLines] = useState<SelectedLine[]>(initialQuote ? initialQuote.lines : [
     { itemId: "strategy-workshop", quantity: 3, discount: 0 },
     { itemId: "advisory-retainer", quantity: 1, discount: 0 },
@@ -201,6 +206,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, ruleSe
   const [revising, setRevising] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
   const [quoteFiles, setQuoteFiles] = useState<QuoteFile[]>([]);
+  const [proposalTemplates,setProposalTemplates]=useState<DocumentTemplate[]>([]);
   const [pdfState, setPdfState] = useState<string | null>(null);
   const [priced, setPriced] = useState<PricedQuote | null>(null);
   const [pricingErrors, setPricingErrors] = useState<string[]>([]);
@@ -213,8 +219,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, ruleSe
   }, [preview]);
 
   useEffect(() => {
-    if (!hasSaved) return;
-    fetch(`/api/documents?reference=${encodeURIComponent(reference)}`, { cache: "no-store" }).then((response) => response.json()).then((payload: { files?: QuoteFile[] }) => setQuoteFiles(payload.files ?? [])).catch(() => undefined);
+    fetch(hasSaved?`/api/documents?reference=${encodeURIComponent(reference)}`:"/api/documents", { cache: "no-store" }).then((response) => response.json()).then((payload: { files?: QuoteFile[];templates?:DocumentTemplate[] }) => {setQuoteFiles(payload.files ?? []);setProposalTemplates(payload.templates??[]);}).catch(() => undefined);
   }, [hasSaved, reference]);
 
   useEffect(() => {
@@ -257,7 +262,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, ruleSe
       fetch("/api/quotes", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ reference, clientId, clientName, contactName, contactEmail, validUntil, status: lifecycleStatus === "Ready" ? "Ready" : "Draft", answers, quoteDiscount, lines, document: { title: proposalTitle, introduction: proposalIntroduction, scopeHeading, brandName, brandInitials, depositMinor: Math.max(0, Math.round(Number(deposit || 0) * 100)), options: proposalOptions.filter((option) => option.label.trim()) } }),
+        body: JSON.stringify({ reference, clientId, clientName, contactName, contactEmail, validUntil, status: lifecycleStatus === "Ready" ? "Ready" : "Draft", answers, quoteDiscount, lines, document: { title: proposalTitle, introduction: proposalIntroduction, scopeHeading, brandName, brandInitials, depositMinor: Math.max(0, Math.round(Number(deposit || 0) * 100)), options: proposalOptions.filter((option) => option.label.trim()), pages:proposalPages } }),
         signal: controller.signal,
       })
         .then((response) => {
@@ -273,7 +278,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, ruleSe
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [answers, brandInitials, brandName, clientId, clientName, contactEmail, contactName, deposit, hasSaved, lifecycleStatus, lines, locked, proposalIntroduction, proposalOptions, proposalTitle, quoteDiscount, reference, scopeHeading, validUntil]);
+  }, [answers, brandInitials, brandName, clientId, clientName, contactEmail, contactName, deposit, hasSaved, lifecycleStatus, lines, locked, proposalIntroduction, proposalOptions, proposalPages, proposalTitle, quoteDiscount, reference, scopeHeading, validUntil]);
 
   function updateQuantity(itemId: string, value: number) {
     setLines((current) => current.map((line) => line.itemId === itemId ? { ...line, quantity: value } : line));
@@ -305,7 +310,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, ruleSe
           answers,
           quoteDiscount,
           lines,
-          document: { title: proposalTitle, introduction: proposalIntroduction, scopeHeading, brandName, brandInitials },
+          document: { title: proposalTitle, introduction: proposalIntroduction, scopeHeading, brandName, brandInitials, depositMinor: Math.max(0, Math.round(Number(deposit || 0) * 100)), options: proposalOptions.filter((option) => option.label.trim()), pages:proposalPages },
         }),
       });
       const payload = (await response.json()) as { error?: string };
@@ -397,6 +402,8 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, ruleSe
     setQuoteFiles((current) => [...current, payload.file!]); setNotice(`${payload.file.filename} attached to ${reference}.`);
   }
 
+  async function uploadProposalImage(file:File){if(!hasSaved){setNotice("Save the draft before adding proposal images.");return null;}const form=new FormData();form.set("file",file);form.set("kind","image");form.set("reference",reference);const response=await fetch("/api/uploads",{method:"POST",body:form});const payload=await response.json()as{file?:QuoteFile;error?:string};if(!response.ok||!payload.file){setNotice(payload.error??"The image could not be uploaded.");return null;}setQuoteFiles(current=>[...current,payload.file!]);return payload.file.id;}
+
   async function requestPdf() {
     setPdfState("Queueing PDF…");
     const response = await fetch("/api/pdfs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reference }) });
@@ -407,7 +414,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, ruleSe
   }
 
   if (preview && priced) {
-    return <QuotePreview quote={priced} clientName={clientName} reference={reference} title={proposalTitle} introduction={proposalIntroduction} scopeHeading={scopeHeading} brandName={brandName} brandInitials={brandInitials} onBack={() => setPreview(false)} />;
+    return <QuotePreview quote={priced} clientName={clientName} reference={reference} title={proposalTitle} introduction={proposalIntroduction} scopeHeading={scopeHeading} brandName={brandName} brandInitials={brandInitials} pages={proposalPages} options={proposalOptions} onBack={() => setPreview(false)} />;
   }
 
   return (
@@ -523,20 +530,15 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, ruleSe
           <section className="section-block document-content-block">
             <div className="section-number">04</div>
             <div className="section-content">
-              <div className="section-title-row"><div><h2>Proposal content</h2><p>Shape the recipient narrative without altering governed commercial values.</p></div><span className="complete-mark">Included</span></div>
-              <div className="template-presets" aria-label="Proposal presets">
-                <button onClick={() => { setProposalTitle("Transformation delivery partnership"); setProposalIntroduction("This proposal combines focused strategy, delivery capacity and an ongoing advisory relationship. Every commercial value is derived from the published QuoteBench rule set and recorded with its calculation trace."); setScopeHeading("A practical route to measurable change"); }}>Advisory</button>
-                <button onClick={() => { setProposalTitle("Independent assurance programme"); setProposalIntroduction("This proposal sets out a proportionate, evidence-led assurance programme designed to strengthen governance, accountability and regulatory confidence."); setScopeHeading("A controlled route from evidence to conclusion"); }}>Assurance</button>
-                <button onClick={() => { setProposalTitle("Digital implementation programme"); setProposalIntroduction("This proposal combines mobilisation, delivery sprints and ongoing platform support within a transparent commercial framework."); setScopeHeading("A structured route from design to adoption"); }}>Implementation</button>
-              </div>
+              <div className="section-title-row"><div><h2>Proposal editor</h2><p>Compose pages, formats and reusable content blocks without altering governed commercial values.</p></div><span className="complete-mark">{proposalPages.length} pages</span></div>
               <div className="document-fields">
                 <label><span>Proposal title</span><input value={proposalTitle} onChange={(event) => setProposalTitle(event.target.value)} /></label>
-                <label><span>Introduction</span><textarea rows={4} value={proposalIntroduction} onChange={(event) => setProposalIntroduction(event.target.value)} /></label>
-                <label><span>Scope heading</span><input value={scopeHeading} onChange={(event) => setScopeHeading(event.target.value)} /></label>
                 <div className="brand-fields"><label><span>Brand name</span><input value={brandName} onChange={(event) => setBrandName(event.target.value)} /></label><label><span>Initials</span><input maxLength={4} value={brandInitials} onChange={(event) => setBrandInitials(event.target.value.toUpperCase())} /></label></div>
                 <label><span>Deposit stated, £, optional</span><input type="number" min="0" step="0.01" value={deposit} onChange={(event) => setDeposit(event.target.value)} /></label>
+                <label><span>Start from a reusable template</span><select defaultValue="" disabled={locked} onChange={event=>{const template=proposalTemplates.find(item=>item.id===event.target.value);if(template)setProposalPages(template.pages.map(page=>({...page,id:crypto.randomUUID(),blocks:page.blocks.map(block=>({...block,id:crypto.randomUUID(),items:block.items?.map(item=>({...item,id:crypto.randomUUID()}))}))})));event.target.value="";}}><option value="">Choose a template…</option>{proposalTemplates.map(template=><option key={template.id} value={template.id}>{template.name}</option>)}</select></label>
                 <div className="proposal-options-editor"><span>Acceptance options, optional</span>{proposalOptions.map((option, index) => <div key={option.id}><input value={option.label} placeholder={`Option ${index + 1}`} onChange={(event) => setProposalOptions((current) => current.map((entry) => entry.id === option.id ? { ...entry, label: event.target.value } : entry))} /><button className="text-button danger-text" onClick={() => setProposalOptions((current) => current.filter((entry) => entry.id !== option.id))}>Remove</button></div>)}<button className="text-button" onClick={() => setProposalOptions((current) => [...current, { id: crypto.randomUUID(), label: "" }])}>+ Add option</button></div>
               </div>
+              <ProposalEditor value={proposalPages} onChange={setProposalPages} onUploadImage={uploadProposalImage} readOnly={locked}/>
               <div className="attachment-panel"><div><strong>Supporting files</strong><p>Attachments are stored securely and appear on the recipient page for this quote version.</p></div><label className={`button secondary ${hasSaved ? "" : "disabled-upload"}`}>Attach file<input type="file" disabled={!hasSaved} accept=".pdf,.png,.jpg,.jpeg,.txt,.docx" onChange={(event) => void uploadAttachment(event.target.files?.[0])} /></label><button className="button secondary" disabled={!hasSaved} onClick={requestPdf}>Generate PDF</button></div>{quoteFiles.length > 0 && <div className="quote-files">{quoteFiles.map((file) => <a key={file.id} href={`/api/files/${file.id}`} target="_blank" rel="noreferrer"><span>{file.kind === "pdf" ? "PDF" : "FILE"}</span><strong>{file.filename}</strong><small>{Math.ceil(file.sizeBytes / 1024)} KB</small></a>)}</div>}{pdfState && (pdfState.startsWith("PDF ready|") ? <a className="pdf-ready-link" href={pdfState.split("|")[1]} target="_blank" rel="noreferrer">PDF ready, download now</a> : <p className="pdf-state">{pdfState}</p>)}
             </div>
           </section>
@@ -596,16 +598,16 @@ function QuoteSummary({ quote, reference, ruleSetVersion, errors, discount, setD
   );
 }
 
-function QuotePreview({ quote, clientName, reference, title, introduction, scopeHeading, brandName, brandInitials, onBack }: { quote: PricedQuote; clientName: string; reference: string; title: string; introduction: string; scopeHeading: string; brandName: string; brandInitials: string; onBack: () => void }) {
+function PreviewBlock({block,quote,recurring,options}:{block:DocumentPage["blocks"][number];quote:PricedQuote;recurring:Array<[Frequency,number]>;options:Array<{id:string;label:string}>}){if(block.enabled===false)return null;const heading=<>{block.eyebrow&&<p className="eyebrow">{block.eyebrow}</p>}{block.title&&<h2>{block.title}</h2>}</>;if(block.type==="spacer")return <div className="recipient-spacer"/>;if(block.type==="pricing_table")return <div className="recipient-content-block">{heading}{block.display!=="totals"&&<section className="document-scope">{quote.lines.map(line=><div key={line.lineId}><span><strong>{line.itemName}</strong><small>{line.quantity} {line.unitLabel}</small></span><strong>{formatMoney(line.finalPriceMinor)}</strong></div>)}</section>}{block.display!=="lines"&&<section className="document-totals"><div><small>ONE-OFF INVESTMENT</small><strong>{formatMoney(quote.oneOffSubtotalMinor)}</strong></div>{recurring.map(([frequency,amount])=><div key={frequency}><small>{labels[frequency].toUpperCase()} RECURRING</small><strong>{formatMoney(amount)}</strong></div>)}</section>}</div>;if(["feature_grid","timeline","team","faq"].includes(block.type))return <div className="recipient-content-block">{heading}<div className="recipient-items" style={{"--columns":String(block.columns??3)} as CSSProperties}>{(block.items??[]).map(item=><div key={item.id}><strong>{item.title}</strong><p>{item.content}</p></div>)}</div></div>;if(block.type==="image")return <div className="recipient-content-block">{heading}{block.fileId&&<img className="recipient-media" src={`/api/files/${block.fileId}`} alt={block.title??"Proposal image"}/>}</div>;if(block.type==="options")return <div className="recipient-content-block">{heading}<div className="recipient-items">{options.map(option=><div key={option.id}><strong>{option.label}</strong></div>)}</div></div>;return <div className={`recipient-content-block ${block.type==="callout"?"recipient-callout":""}`}>{heading}{block.content&&<p>{block.content}</p>}</div>}
+
+function QuotePreview({ quote, clientName, reference, title, introduction, scopeHeading, brandName, brandInitials, pages, options, onBack }: { quote: PricedQuote; clientName: string; reference: string; title: string; introduction: string; scopeHeading: string; brandName: string; brandInitials: string; pages:DocumentPage[];options:Array<{id:string;label:string}>; onBack: () => void }) {
   const recurring = (Object.entries(quote.recurringByFrequency) as Array<[Frequency, number]>).filter(([frequency, amount]) => frequency !== "one_off" && amount > 0);
   return (
     <div className="preview-shell">
       <div className="preview-toolbar"><button className="button secondary" onClick={onBack}>← Back to builder</button><span>Client preview · responsive web document</span><button className="button primary" onClick={() => window.print()}>Print or save PDF</button></div>
       <article className="client-document">
         <header><span className="client-logo">{brandInitials || "FAP"}</span><div><small>PROPOSAL {reference}</small><h1>{title}</h1><p>Prepared for {clientName}</p></div></header>
-        <section className="document-intro"><p className="eyebrow">Our proposal</p><h2>Clarity from scope to commitment.</h2><p>{introduction}</p></section>
-        <section className="document-scope"><p className="eyebrow">Scope and investment</p><h2>{scopeHeading}</h2>{quote.lines.map((line) => <div key={line.lineId}><span><strong>{line.itemName}</strong><small>{line.quantity} {line.unitLabel}{line.quantity === 1 ? "" : "s"}</small></span><strong>{formatMoney(line.finalPriceMinor)}</strong></div>)}</section>
-        <section className="document-totals"><div><small>ONE-OFF INVESTMENT</small><strong>{formatMoney(quote.oneOffSubtotalMinor)}</strong></div>{recurring.map(([frequency, amount]) => <div key={frequency}><small>{labels[frequency].toUpperCase()} RECURRING</small><strong>{formatMoney(amount)}</strong></div>)}</section>
+        {pages.length?pages.map(page=><section className={`recipient-page page-${page.format} background-${page.background}`} key={page.id}>{page.blocks.map(block=><PreviewBlock key={block.id} block={block} quote={quote} recurring={recurring} options={options}/>)}</section>):<><section className="document-intro"><p className="eyebrow">Our proposal</p><h2>Clarity from scope to commitment.</h2><p>{introduction}</p></section><section className="document-scope"><p className="eyebrow">Scope and investment</p><h2>{scopeHeading}</h2>{quote.lines.map((line) => <div key={line.lineId}><span><strong>{line.itemName}</strong><small>{line.quantity} {line.unitLabel}{line.quantity === 1 ? "" : "s"}</small></span><strong>{formatMoney(line.finalPriceMinor)}</strong></div>)}</section><section className="document-totals"><div><small>ONE-OFF INVESTMENT</small><strong>{formatMoney(quote.oneOffSubtotalMinor)}</strong></div>{recurring.map(([frequency, amount]) => <div key={frequency}><small>{labels[frequency].toUpperCase()} RECURRING</small><strong>{formatMoney(amount)}</strong></div>)}</section></>}
         <section className="document-accept"><div><p className="eyebrow">Next step</p><h2>Ready to proceed?</h2><p>The formal acceptance workflow will record the selected option, full name and timestamp.</p></div><button>Accept proposal</button></section>
         <footer><span>{brandName}</span><span>Valid until 14 September 2026</span><span>Private and confidential</span></footer>
       </article>
@@ -850,7 +852,7 @@ function RulesScreen({ published, draft, catalogueItems, onChanged }: { publishe
   const isDraft = Boolean(draft);
   return (
     <div className="standard-page">
-      <div className="page-heading"><div><p className="eyebrow">Pricing governance</p><div className="title-row"><h1>Consulting rate card</h1><Status>{isDraft ? "Draft" : "Published"}</Status></div><p className="page-subtitle">Published version {published.version} prices every new quote. Draft changes remain isolated until explicit publication.</p></div><div className="heading-actions">{!isDraft ? <button className="button primary" onClick={() => ruleAction("create_draft")} disabled={saving !== null}>{saving === "create" ? "Creating…" : "Create draft version"}</button> : <><button className="button secondary" onClick={() => ruleAction("save_draft")} disabled={saving !== null}>{saving === "save" ? "Saving…" : "Save draft"}</button><button className="button primary" onClick={() => ruleAction("publish")} disabled={saving !== null}>{saving === "publish" ? "Publishing…" : `Publish version ${working.version}`}</button></>}</div></div>
+      <div className="page-heading"><div><p className="eyebrow">Pricing governance</p><div className="title-row"><h1>Pricing rules and controls</h1><Status>{isDraft ? "Draft" : "Published"}</Status></div><p className="page-subtitle">Published version {published.version} governs products, services, subscriptions and mixed commercial proposals. Draft changes remain isolated until explicit publication.</p></div><div className="heading-actions">{!isDraft ? <button className="button primary" onClick={() => ruleAction("create_draft")} disabled={saving !== null}>{saving === "create" ? "Creating…" : "Create draft version"}</button> : <><button className="button secondary" onClick={() => ruleAction("save_draft")} disabled={saving !== null}>{saving === "save" ? "Saving…" : "Save draft"}</button><button className="button primary" onClick={() => ruleAction("publish")} disabled={saving !== null}>{saving === "publish" ? "Publishing…" : `Publish version ${working.version}`}</button></>}</div></div>
       {message && <div className="notice" role="status"><span>✓</span>{message}<button onClick={() => setMessage(null)}>×</button></div>}
       <div className={`rule-overview ${isDraft ? "rule-editor" : ""}`}><label><span>Rounding increment</span>{isDraft ? <input type="number" min="0.01" step="0.01" value={working.roundingIncrementMinor / 100} onChange={(event) => setWorking({ ...working, roundingIncrementMinor: money.minor(Math.round(Number(event.target.value) * 100)) })} /> : <strong>{formatMoney(working.roundingIncrementMinor)}</strong>}<small>Away from zero, per line</small></label><label><span>Quote minimum</span>{isDraft ? <input type="number" min="0" step="1" value={working.quoteMinimumMinor / 100} onChange={(event) => setWorking({ ...working, quoteMinimumMinor: money.minor(Math.round(Number(event.target.value) * 100)) })} /> : <strong>{formatMoney(working.quoteMinimumMinor)}</strong>}<small>One-off subtotal only</small></label><label><span>Margin floor</span>{isDraft ? <input type="number" min="0" max="95" step="0.1" value={(working.marginFloorBp ?? 0) / 100} onChange={(event) => setWorking({ ...working, marginFloorBp: money.bp(Math.round(Number(event.target.value) * 100)) })} /> : <strong>{(working.marginFloorBp ?? 0) / 100}%</strong>}<small>Warning, not a block</small></label><label><span>Owner discount cap</span>{isDraft ? <input type="number" min="0" max="95" step="0.1" value={working.discountCaps.owner / 100} onChange={(event) => setWorking({ ...working, discountCaps: { ...working.discountCaps, owner: money.bp(Math.round(Number(event.target.value) * 100)) } })} /> : <strong>{working.discountCaps.owner / 100}%</strong>}<small>Hard commercial control</small></label></div>
       <section className="data-panel rule-questions"><div className="panel-toolbar"><div><h2>Pricing questions</h2><p>Required questions appear dynamically in every new quote.</p></div>{isDraft ? <button className="button secondary" onClick={addQuestion}>+ Add question</button> : <span className="rule-count">{working.questions?.length ?? 0} questions</span>}</div>{(working.questions ?? []).map((question, questionIndex) => <div className="question-editor" key={question.id}><div className="question-editor-head"><span className="sequence">{questionIndex + 1}</span>{isDraft ? <><input aria-label="Question prompt" value={question.prompt} onChange={(event) => setWorking({ ...working, questions: working.questions?.map((entry) => entry.id === question.id ? { ...entry, prompt: event.target.value } : entry) })} /><label><input type="checkbox" checked={question.required} onChange={(event) => setWorking({ ...working, questions: working.questions?.map((entry) => entry.id === question.id ? { ...entry, required: event.target.checked } : entry) })} /> Required</label><button aria-label={`Remove ${question.prompt}`} onClick={() => removeQuestion(question.id)}>×</button></> : <><strong>{question.prompt}</strong><Status>{question.required ? "Required" : "Optional"}</Status></>}</div><p>{question.helpText}</p><div className="question-options">{question.options.map((option, optionIndex) => isDraft ? <div key={`${question.id}-${optionIndex}`}><input aria-label="Option label" value={option.label} onChange={(event) => setWorking({ ...working, questions: working.questions?.map((entry) => entry.id === question.id ? { ...entry, options: entry.options.map((item, index) => index === optionIndex ? { ...item, label: event.target.value } : item) } : entry) })} /><input aria-label="Option value" value={option.value} onChange={(event) => setWorking({ ...working, questions: working.questions?.map((entry) => entry.id === question.id ? { ...entry, options: entry.options.map((item, index) => index === optionIndex ? { ...item, value: event.target.value } : item) } : entry) })} /></div> : <span key={option.value}>{option.label}</span>)}</div></div>)}</section>
@@ -891,6 +893,8 @@ export default function QuoteBench({ currentUser }: { currentUser: ChatGPTUser |
   const [activeRuleSet, setActiveRuleSet] = useState<RuleSet>(defaultRuleSet);
   const [draftRuleSet, setDraftRuleSet] = useState<RuleSet | null>(null);
   const [entitlement, setEntitlement] = useState<Entitlement | null>(null);
+  const [workspace, setWorkspace] = useState<Workspace | null>(null);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [quotesLoading, setQuotesLoading] = useState(Boolean(currentUser));
   const [storageMessage, setStorageMessage] = useState<string | null>(currentUser ? null : "Sign in with ChatGPT to load and save durable workspace quotes.");
   const currentUserEmail = currentUser?.email;
@@ -929,7 +933,7 @@ export default function QuoteBench({ currentUser }: { currentUser: ChatGPTUser |
     setQuotesLoading(true);
     try {
       const response = await fetch("/api/quotes", { cache: "no-store" });
-      const payload = (await response.json()) as { quotes?: SavedQuote[]; events?: SavedEvent[]; entitlement?: Entitlement; catalogue?: CatalogueItem[]; ruleSet?: RuleSet; draftRuleSet?: RuleSet | null; clients?: ClientRecord[]; error?: string };
+      const payload = (await response.json()) as { quotes?: SavedQuote[]; events?: SavedEvent[]; entitlement?: Entitlement; catalogue?: CatalogueItem[]; ruleSet?: RuleSet; draftRuleSet?: RuleSet | null; clients?: ClientRecord[]; workspace?:Workspace; error?: string };
       if (!response.ok) throw new Error(payload.error ?? "Saved quotes are unavailable.");
       setSavedQuotes(payload.quotes ?? []);
       setSavedEvents(payload.events ?? []);
@@ -938,6 +942,7 @@ export default function QuoteBench({ currentUser }: { currentUser: ChatGPTUser |
       setActiveRuleSet(payload.ruleSet ?? defaultRuleSet);
       setDraftRuleSet(payload.draftRuleSet ?? null);
       setClients(payload.clients ?? []);
+      setWorkspace(payload.workspace??null);
       setStorageMessage(null);
     } catch (error) {
       setStorageMessage(error instanceof Error ? error.message : "Saved quotes are unavailable.");
@@ -951,11 +956,11 @@ export default function QuoteBench({ currentUser }: { currentUser: ChatGPTUser |
     let active = true;
     fetch("/api/quotes", { cache: "no-store" })
       .then(async (response) => {
-        const payload = (await response.json()) as { quotes?: SavedQuote[]; events?: SavedEvent[]; entitlement?: Entitlement; catalogue?: CatalogueItem[]; ruleSet?: RuleSet; draftRuleSet?: RuleSet | null; clients?: ClientRecord[]; error?: string };
+        const payload = (await response.json()) as { quotes?: SavedQuote[]; events?: SavedEvent[]; entitlement?: Entitlement; catalogue?: CatalogueItem[]; ruleSet?: RuleSet; draftRuleSet?: RuleSet | null; clients?: ClientRecord[]; workspace?:Workspace; error?: string };
         if (!response.ok) throw new Error(payload.error ?? "Saved quotes are unavailable.");
-        return { quotes: payload.quotes ?? [], events: payload.events ?? [], entitlement: payload.entitlement ?? null, catalogueItems: payload.catalogue ?? catalogue, nextRuleSet: payload.ruleSet ?? defaultRuleSet, nextDraftRuleSet: payload.draftRuleSet ?? null, clientRecords: payload.clients ?? [] };
+        return { quotes: payload.quotes ?? [], events: payload.events ?? [], entitlement: payload.entitlement ?? null, catalogueItems: payload.catalogue ?? catalogue, nextRuleSet: payload.ruleSet ?? defaultRuleSet, nextDraftRuleSet: payload.draftRuleSet ?? null, clientRecords: payload.clients ?? [], nextWorkspace: payload.workspace??null };
       })
-      .then(({ quotes, events, entitlement: nextEntitlement, catalogueItems, nextRuleSet, nextDraftRuleSet, clientRecords }) => {
+      .then(({ quotes, events, entitlement: nextEntitlement, catalogueItems, nextRuleSet, nextDraftRuleSet, clientRecords, nextWorkspace }) => {
         if (active) {
           setSavedQuotes(quotes);
           setSavedEvents(events);
@@ -964,6 +969,7 @@ export default function QuoteBench({ currentUser }: { currentUser: ChatGPTUser |
           setActiveRuleSet(nextRuleSet);
           setDraftRuleSet(nextDraftRuleSet);
           setClients(clientRecords);
+          setWorkspace(nextWorkspace);
           setStorageMessage(null);
         }
       })
@@ -978,11 +984,13 @@ export default function QuoteBench({ currentUser }: { currentUser: ChatGPTUser |
     };
   }, [currentUserEmail]);
 
+  useEffect(()=>{if(!currentUserEmail)return;fetch("/api/workspaces",{cache:"no-store"}).then(response=>response.json()).then((payload:{workspaces?:Array<Record<string,unknown>>})=>setWorkspaces((payload.workspaces??[]).map(row=>({id:String(row.id),name:String(row.name),currency:String(row.currency),role:String(row.role) as Workspace["role"]})))).catch(()=>undefined);},[currentUserEmail]);
+
   return (
     <div className="app-shell">
       <Sidebar screen={screen} setScreen={setScreen} currentUser={currentUser} entitlement={entitlement} />
       <div className="main-shell">
-        <Topbar />
+        <Topbar workspace={workspace} workspaces={workspaces.length?workspaces:workspace?[workspace]:[]} />
         <main className="main-content">
           {screen === "builder" && <QuoteBuilder key={activeReference} reference={activeReference} initialQuote={activeQuote} clients={clients} catalogueItems={workspaceCatalogue} ruleSet={activeRuleSet} onSaved={refreshQuotes} onRevised={openRevision} />}
           {screen === "quotes" && <QuotesScreen onCreate={startNewQuote} onOpen={openQuote} savedQuotes={savedQuotes} loading={quotesLoading} storageMessage={storageMessage} />}
@@ -997,6 +1005,7 @@ export default function QuoteBench({ currentUser }: { currentUser: ChatGPTUser |
           {screen === "delivery" && <DeliveryScreen quotes={savedQuotes} onSent={refreshQuotes} />}
           {screen === "templates" && <TemplatesScreen onProvisioned={refreshQuotes} startQuote={startNewQuote} />}
           {screen === "billing" && <BillingScreen />}
+          {screen === "governance" && <GovernanceScreen />}
           {screen === "operator" && <OperatorScreen />}
         </main>
       </div>
