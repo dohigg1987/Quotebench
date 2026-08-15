@@ -681,6 +681,8 @@ export async function acceptQuote(token: string, acceptedBy: string, userAgent: 
   ]);
   const { emitWebhooks } = await import("./integration-store");
   await emitWebhooks("finance-advisory-partners", "quote.accepted", { reference: quote.reference, acceptedBy });
+  const { sendAcceptanceNotifications } = await import("./notification-store");
+  await sendAcceptanceNotifications({ reference: quote.reference, clientName: quote.clientName, recipientEmail: quote.recipientEmail ?? quote.contactEmail, ownerEmail: quote.ownerEmail, acceptedBy, token });
   return { ...quote, status: "Accepted" as const, acceptedBy, acceptedAt: evidence.acceptedAt };
 }
 
