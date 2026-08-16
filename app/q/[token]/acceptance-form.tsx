@@ -1,0 +1,85 @@
+"use client";
+
+import { useState } from "react";
+
+type ProposalStatus = "Issued" | "Viewed" | "Accepted" | "Declined" | "Expired" | "Superseded";
+
+export default function AcceptanceForm({ token, status, acceptedBy, declineReason, supersededBy, options = [], depositMinor = 0, currency = "GBP" }: { token: string; status: ProposalStatus; acceptedBy: string | null; declineReason: string | null; supersededBy: string | null; options?: Array<{ id: string; label: string }>; depositMinor?: number; currency?: string }) {
+  const [name, setName] = useState("");
+  const [consent, setConsent] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [accepted, setAccepted] = useState(status === "Accepted");
+  const [declined, setDeclined] = useState(status === "Declined");
+  const [reason, setReason] = useState(declineReason ?? "Budget");
+  const [selectedOptionId, setSelectedOptionId] = useState(options.length === 1 ? options[0].id : "");
+  const [message, setMessage] = useState(status === "Accepted" ? `Accepted by ${acceptedBy ?? "recipient"}` : status === "Declined" ? `Declined${declineReason ? `: ${declineReason}` : ""}` : "");
+
+  async function submit() {
+    setSubmitting(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/public/quotes/${token}/accept`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ acceptedBy: name, consent, selectedOptionId: selectedOptionId || undefined }),
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Acceptance could not be recorded.");
+      setAccepted(true);
+      setMessage(`Acceptance recorded for ${name}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Acceptance could not be recorded.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function decline() {
+    setSubmitting(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/public/quotes/${token}/decline`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reason }),
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "The proposal could not be declined.");
+      setDeclined(true);
+      setMessage(`Declined: ${reason}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The proposal could not be declined.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (accepted) {
+    return <div className="acceptance-confirmed"><span>✓</span><div><strong>Proposal accepted</strong><p>{message}. A timestamped evidence record has been retained.</p></div></div>;
+  }
+
+
+  if (declined) {
+    return <div className="acceptance-confirmed declined-confirmed"><span>×</span><div><strong>Proposal declined</strong><p>{message}. The sender can reopen this as a new version.</p></div></div>;
+  }
+
+  if (status === "Expired") {
+    return <div className="acceptance-confirmed decision-unavailable"><span>i</span><div><strong>Proposal expired</strong><p>Acceptance is closed. Contact the sender to request a refreshed version.</p></div></div>;
+  }
+
+  if (status === "Superseded") {
+    return <div className="acceptance-confirmed decision-unavailable"><span>i</span><div><strong>Newer version available</strong><p>This proposal has been superseded by {supersededBy ?? "a revised quotation"}. Contact the sender for the current secure link.</p></div></div>;
+  }
+
+  return (
+    <div className="acceptance-form">
+      {options.length > 0 && <fieldset className="acceptance-options"><legend>Select one option</legend>{options.map((option) => <label key={option.id}><input type="radio" name="proposal-option" checked={selectedOptionId === option.id} onChange={() => setSelectedOptionId(option.id)} /><span>{option.label}</span></label>)}</fieldset>}
+      {depositMinor > 0 && <div className="deposit-note"><span>Deposit stated in proposal</span><strong>{new Intl.NumberFormat("en-GB", { style: "currency", currency }).format(depositMinor / 100)}</strong><small>No payment is collected on this page.</small></div>}
+      <label><span>Full name</span><input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" /></label>
+      <label className="consent-row"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span>I accept this proposal and confirm that I am authorised to proceed.</span></label>
+      {message && <p className="acceptance-error" role="alert">{message}</p>}
+      <button onClick={submit} disabled={submitting || !consent || name.trim().length < 2 || (options.length > 0 && !selectedOptionId)}>{submitting ? "Recording…" : "Accept proposal"}</button>
+      <div className="decline-control"><label><span>Decline reason</span><select value={reason} onChange={(event) => setReason(event.target.value)}><option>Budget</option><option>Timing</option><option>Scope</option><option>Alternative provider</option><option>No longer required</option></select></label><button className="decline-button" onClick={decline} disabled={submitting}>Decline proposal</button></div>
+    </div>
+  );
+}

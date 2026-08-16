@@ -1,0 +1,1 @@
+ALTER TABLE `quotes` ADD `acceptance_snapshot_json` text;
