@@ -16,7 +16,7 @@ const config = {
   $schema: "node_modules/wrangler/config-schema.json",
   name: selected.worker,
   main: "../dist/server/index.js",
-  assets: { directory: "../dist/client", binding: "ASSETS", run_worker_first: true },
+  assets: { directory: "../dist/client", binding: "ASSETS", run_worker_first: false },
   compatibility_date: "2026-08-16",
   compatibility_flags: ["nodejs_compat"],
   no_bundle: true,
