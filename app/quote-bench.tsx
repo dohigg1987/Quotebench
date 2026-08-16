@@ -34,7 +34,7 @@ const TemplatesScreen = lazy(() => import("./templates-screen"));
 
 const CURRENT_DAY = new Date().toISOString().slice(0, 10);
 
-export type Screen = "builder" | "quotes" | "clients" | "catalogue" | "rules" | "activity" | "integrations" | "team" | "usage" | "documents" | "delivery" | "templates" | "billing" | "governance" | "engagement" | "ai";
+export type Screen = "overview" | "builder" | "quotes" | "clients" | "catalogue" | "rules" | "activity" | "integrations" | "team" | "usage" | "documents" | "delivery" | "templates" | "billing" | "governance" | "engagement" | "ai";
 type Workspace = { id:string; name:string; currency:string; role:"owner"|"admin"|"quoter" };
 type SelectedLine = { itemId: string; quantity: number; discount: number };
 type ClientRecord = {
@@ -89,18 +89,26 @@ type SavedEvent = {
 type Entitlement = { planName: string; monthlyQuoteLimit: number; quotesUsedThisMonth: number; active: boolean };
 type QuoteFile = { id: string; filename: string; contentType: string; sizeBytes: number; kind: string };
 export type BuilderStep = "client" | "services" | "proposal" | "governance" | "review";
-type HorizonIconName = "builder" | "quotes" | "clients" | "services" | "rules" | "documents" | "templates" | "engagement" | "ai" | "activity" | "delivery" | "integrations" | "team" | "usage" | "billing" | "governance" | "admin" | "search" | "notification";
+type HorizonIconName = "overview" | "builder" | "quotes" | "clients" | "services" | "rules" | "documents" | "templates" | "engagement" | "ai" | "activity" | "delivery" | "integrations" | "team" | "usage" | "billing" | "governance" | "admin" | "search" | "notification";
 
 const screenTitles: Record<Screen, string> = {
-  builder: "Quote builder", quotes: "Quotes", clients: "Clients", catalogue: "Services", rules: "Pricing rules",
+  overview: "Overview", builder: "Quote builder", quotes: "Quotes", clients: "Clients", catalogue: "Services", rules: "Pricing rules",
     documents: "Brand and delivery", templates: "Templates", engagement: "Engagement governance", ai: "AI assistance",
   activity: "Activity", delivery: "Send and track", integrations: "Imports and integrations", team: "Team and roles",
   usage: "Usage and limits", billing: "Plans and billing", governance: "Privacy and security",
 };
 
+const navigationGroups: Array<{ id: string; label: string; items: Array<{ key: Screen; label: string; icon: HorizonIconName }> }> = [
+  { id: "commercial", label: "Commercial", items: [{ key: "overview", label: "Overview", icon: "overview" }, { key: "builder", label: "Quote builder", icon: "builder" }, { key: "quotes", label: "Quotes", icon: "quotes" }, { key: "clients", label: "Clients", icon: "clients" }] },
+  { id: "foundation", label: "Commercial foundation", items: [{ key: "catalogue", label: "Services", icon: "services" }, { key: "rules", label: "Pricing rules", icon: "rules" }, { key: "templates", label: "Templates", icon: "templates" }, { key: "documents", label: "Brand and delivery", icon: "documents" }] },
+  { id: "operations", label: "Operations", items: [{ key: "activity", label: "Activity", icon: "activity" }, { key: "delivery", label: "Send and track", icon: "delivery" }, { key: "engagement", label: "Engagement governance", icon: "engagement" }, { key: "ai", label: "AI assistance", icon: "ai" }] },
+  { id: "administration", label: "Workspace", items: [{ key: "integrations", label: "Imports and integrations", icon: "integrations" }, { key: "team", label: "Team and roles", icon: "team" }, { key: "usage", label: "Usage and limits", icon: "usage" }, { key: "billing", label: "Plans and billing", icon: "billing" }, { key: "governance", label: "Privacy and security", icon: "governance" }] },
+];
+
 function HorizonIcon({ name }: { name: HorizonIconName }) {
   const common = { width: 19, height: 19, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
   const paths: Record<HorizonIconName, React.ReactNode> = {
+    overview: <><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="4" rx="1.5"/><rect x="14" y="10" width="7" height="11" rx="1.5"/><rect x="3" y="13" width="7" height="8" rx="1.5"/></>,
     builder: <><path d="M7 3h8l4 4v14H7z"/><path d="M15 3v5h5M10 13h6M13 10v6"/></>,
     quotes: <><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></>,
     clients: <><circle cx="9" cy="8" r="3"/><path d="M3.5 20c.4-4 2.2-6 5.5-6s5.1 2 5.5 6M16 6.5a2.5 2.5 0 0 1 0 5M16.5 14c2.4.4 3.7 2.2 4 5"/></>,
@@ -160,23 +168,17 @@ function Status({ children }: { children: string }) {
 }
 
 function Sidebar({ screen, setScreen, currentUser, entitlement, mobileOpen, onClose, operatorAccess }: { screen: Screen; setScreen: (screen: Screen) => void; currentUser: QuoteBenchUser | null; entitlement: Entitlement | null; mobileOpen: boolean; onClose: () => void; operatorAccess: boolean }) {
-  const groups: Array<{ id: string; label: string; items: Array<{ key: Screen; label: string; icon: HorizonIconName }> }> = [
-    { id: "commercial", label: "Commercial", items: [{ key: "builder", label: "Quote builder", icon: "builder" }, { key: "quotes", label: "Quotes", icon: "quotes" }, { key: "clients", label: "Clients", icon: "clients" }, { key: "catalogue", label: "Services", icon: "services" }, { key: "rules", label: "Pricing rules", icon: "rules" }] },
-    { id: "content", label: "Content and governance", items: [{ key: "templates", label: "Templates", icon: "templates" }, { key: "documents", label: "Brand and delivery", icon: "documents" }, { key: "engagement", label: "Engagement governance", icon: "engagement" }, { key: "ai", label: "AI assistance", icon: "ai" }] },
-    { id: "operations", label: "Operations", items: [{ key: "activity", label: "Activity", icon: "activity" }, { key: "delivery", label: "Send and track", icon: "delivery" }] },
-    { id: "administration", label: "Administration", items: [{ key: "integrations", label: "Imports and integrations", icon: "integrations" }, { key: "team", label: "Team and roles", icon: "team" }, { key: "usage", label: "Usage and limits", icon: "usage" }, { key: "billing", label: "Plans and billing", icon: "billing" }, { key: "governance", label: "Privacy and security", icon: "governance" }] },
-  ];
-  const activeGroup = groups.find((group) => group.items.some((item) => item.key === screen))?.id ?? "commercial";
+  const activeGroup = navigationGroups.find((group) => group.items.some((item) => item.key === screen))?.id ?? "commercial";
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ commercial: true, [activeGroup]: true });
   function navigate(next: Screen) { setScreen(next); onClose(); }
   return (
     <aside className={`sidebar ${mobileOpen ? "mobile-open" : ""}`}>
-      <div className="sidebar-brand-row"><button className="brand" onClick={() => navigate("builder")} aria-label="QuoteBench home">
+      <div className="sidebar-brand-row"><button className="brand" onClick={() => navigate("overview")} aria-label="QuoteBench home">
         <QuoteBenchMark />
-        <span><strong>QuoteBench</strong><small>Commercial workspace</small></span>
+        <span><strong>QuoteBench</strong><small>Revenue operations</small></span>
       </button><button className="nav-close" onClick={onClose} aria-label="Close navigation">×</button></div>
       <nav className="nav" aria-label="Primary navigation">
-        {groups.map((group) => { const open = Boolean(openGroups[group.id]) || group.id === activeGroup; return <section className="nav-group" key={group.id}><button className="nav-group-trigger" aria-expanded={open} onClick={() => setOpenGroups((current) => ({ ...current, [group.id]: !open }))}><span>{group.label}</span><b aria-hidden="true">{open ? "−" : "+"}</b></button>{open && <div>{group.items.map((item) => <button key={item.key} onClick={() => navigate(item.key)} className={screen === item.key ? "nav-item active" : "nav-item"}><span className="nav-icon"><HorizonIcon name={item.icon}/></span><span>{item.label}</span></button>)}</div>}</section>; })}
+        {navigationGroups.map((group) => { const open = Boolean(openGroups[group.id]) || group.id === activeGroup; return <section className="nav-group" key={group.id}><button className="nav-group-trigger" aria-expanded={open} onClick={() => setOpenGroups((current) => ({ ...current, [group.id]: !open }))}><span>{group.label}</span><b aria-hidden="true">{open ? "−" : "+"}</b></button>{open && <div>{group.items.map((item) => <button key={item.key} onClick={() => navigate(item.key)} className={screen === item.key ? "nav-item active" : "nav-item"}><span className="nav-icon"><HorizonIcon name={item.icon}/></span><span>{item.label}</span></button>)}</div>}</section>; })}
       </nav>
       {operatorAccess && <a className="platform-admin-link" href="/admin"><span className="nav-icon"><HorizonIcon name="admin"/></span><span><strong>Platform administration</strong><small>Customers, billing and controls</small></span><b>↗</b></a>}
       <div className="sidebar-foot">
@@ -200,18 +202,101 @@ function Sidebar({ screen, setScreen, currentUser, entitlement, mobileOpen, onCl
   );
 }
 
-function Topbar({ screen, workspace, workspaces, onOpenNavigation }: { screen:Screen; workspace:Workspace|null; workspaces:Workspace[]; onOpenNavigation:()=>void }) {
+function Topbar({ screen, workspace, workspaces, onOpenNavigation, onSearch, onNotifications, onHelp, notificationCount }: { screen:Screen; workspace:Workspace|null; workspaces:Workspace[]; onOpenNavigation:()=>void; onSearch:()=>void; onNotifications:()=>void; onHelp:()=>void; notificationCount:number }) {
   async function selectWorkspace(id:string){await fetch("/api/workspaces",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"select",tenantId:id})});window.location.reload();}
   return (
     <header className="topbar">
       <div className="topbar-start"><button className="mobile-menu" onClick={onOpenNavigation} aria-label="Open navigation"><span/><span/><span/></button><div className="topbar-context"><span>Workspace</span><strong>{screenTitles[screen]}</strong></div><label className="workspace-switcher"><span className="workspace-dot">{workspace?.name?.charAt(0).toUpperCase()??"Q"}</span><select aria-label="Current workspace" value={workspace?.id??""} onChange={event=>void selectWorkspace(event.target.value)}>{workspaces.length?workspaces.map(item=><option value={item.id} key={item.id}>{item.name}</option>):<option value="">QuoteBench workspace</option>}</select></label></div>
       <div className="top-actions">
-        <button className="top-icon" aria-label="Search"><HorizonIcon name="search"/></button>
-        <button className="top-icon notification" aria-label="Notifications"><HorizonIcon name="notification"/></button>
-        <button className="help-link">Help</button>
+        <button className="top-search-trigger" aria-label="Search QuoteBench" onClick={onSearch}><HorizonIcon name="search"/><span>Search QuoteBench</span><kbd>Ctrl K</kbd></button>
+        <button className="top-icon notification" aria-label={notificationCount ? `${notificationCount} unread notifications` : "Notifications"} onClick={onNotifications}><HorizonIcon name="notification"/>{notificationCount > 0 && <span className="notification-count">{notificationCount > 9 ? "9+" : notificationCount}</span>}</button>
+        <button className="help-link" onClick={onHelp}><span aria-hidden="true">?</span> Help</button>
       </div>
     </header>
   );
+}
+
+const eventCopy: Record<SavedEvent["eventType"], string> = {
+  "quote.saved": "Draft saved",
+  "quote.ready": "Quote marked ready",
+  "quote.issued": "Proposal sent",
+  "quote.viewed": "Proposal viewed",
+  "quote.accepted": "Proposal accepted",
+  "quote.declined": "Proposal declined",
+  "quote.expired": "Proposal expired",
+  "quote.superseded": "Quote superseded",
+};
+
+function readableDate(value: string) {
+  const parsed = new Date(value.includes("T") ? value : `${value.replace(" ", "T")}Z`);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+function UtilityLayer({ title, eyebrow, onClose, children, size = "standard" }: { title:string; eyebrow:string; onClose:()=>void; children:React.ReactNode; size?:"standard"|"wide" }) {
+  return <div className="utility-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className={`utility-panel ${size === "wide" ? "wide" : ""}`} role="dialog" aria-modal="true" aria-labelledby="utility-title"><header><div><span>{eyebrow}</span><h2 id="utility-title">{title}</h2></div><button onClick={onClose} aria-label={`Close ${title}`}>×</button></header>{children}</section></div>;
+}
+
+function SearchPalette({ quotes, clients, onClose, onNavigate, onOpenQuote }: { quotes:SavedQuote[]; clients:ClientRecord[]; onClose:()=>void; onNavigate:(screen:Screen)=>void; onOpenQuote:(reference:string)=>void }) {
+  const [query,setQuery]=useState("");
+  const normalised=query.trim().toLowerCase();
+  const screens=navigationGroups.flatMap(group=>group.items).filter(item=>!normalised||item.label.toLowerCase().includes(normalised)).slice(0,7);
+  const quoteResults=quotes.filter(quote=>!normalised||`${quote.reference} ${quote.clientName} ${quote.status}`.toLowerCase().includes(normalised)).slice(0,5);
+  const clientResults=clients.filter(client=>normalised&&`${client.name} ${client.contactName} ${client.contactEmail}`.toLowerCase().includes(normalised)).slice(0,4);
+  function navigate(next:Screen){onNavigate(next);onClose();}
+  function openQuote(reference:string){onOpenQuote(reference);onClose();}
+  return <UtilityLayer title="Search QuoteBench" eyebrow="Command centre" onClose={onClose} size="wide"><div className="command-search"><HorizonIcon name="search"/><input autoFocus value={query} onChange={event=>setQuery(event.target.value)} placeholder="Search screens, quotes and clients" aria-label="Search screens, quotes and clients"/><kbd>Esc</kbd></div><div className="command-results">{screens.length>0&&<section><h3>Go to</h3>{screens.map(item=><button key={item.key} onClick={()=>navigate(item.key)}><span className="command-result-icon"><HorizonIcon name={item.icon}/></span><span><strong>{item.label}</strong><small>Workspace screen</small></span><b>↵</b></button>)}</section>}{quoteResults.length>0&&<section><h3>Quotes</h3>{quoteResults.map(quote=><button key={quote.id} onClick={()=>openQuote(quote.reference)}><span className="command-result-monogram">{quote.reference.slice(-2)}</span><span><strong>{quote.reference} · {quote.clientName}</strong><small>{quote.status} · {formatMoney(quote.oneOffTotalMinor,quote.currency)}</small></span><b>Open</b></button>)}</section>}{clientResults.length>0&&<section><h3>Clients</h3>{clientResults.map(client=><button key={client.id} onClick={()=>navigate("clients")}><span className="command-result-monogram">{client.name.charAt(0)}</span><span><strong>{client.name}</strong><small>{client.contactName} · {client.contactEmail}</small></span><b>View</b></button>)}</section>}{normalised&&screens.length===0&&quoteResults.length===0&&clientResults.length===0&&<div className="command-empty"><strong>No matches for “{query}”</strong><p>Try a quote reference, client name, or workspace screen.</p></div>}</div></UtilityLayer>;
+}
+
+function NotificationsPanel({ events, onClose, onNavigate }: { events:SavedEvent[]; onClose:()=>void; onNavigate:(screen:Screen)=>void }) {
+  const recent=[...events].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).slice(0,8);
+  return <UtilityLayer title="Notifications" eyebrow="Commercial signals" onClose={onClose}><div className="utility-intro"><p>Updates that need attention across your live commercial work.</p><button onClick={()=>{onNavigate("activity");onClose();}}>Open full activity</button></div>{recent.length?<div className="notification-list">{recent.map(event=><button key={event.id} onClick={()=>{onNavigate("activity");onClose();}}><span className={`notification-mark ${event.eventType.split(".")[1]}`}/><span><strong>{eventCopy[event.eventType]}</strong><small>{event.quoteReference} · {readableDate(event.createdAt)}</small></span><b>›</b></button>)}</div>:<div className="utility-empty"><span>✓</span><strong>You’re all caught up</strong><p>Views, approvals and quote changes will appear here as they happen.</p></div>}</UtilityLayer>;
+}
+
+function HelpPanel({ screen, onClose, onNavigate }: { screen:Screen; onClose:()=>void; onNavigate:(screen:Screen)=>void }) {
+  const contextual:Record<Screen,{title:string;body:string;next:Screen;action:string}>={
+    overview:{title:"Start with a clean commercial foundation",body:"Add services and pricing controls before issuing your first governed proposal.",next:"catalogue",action:"Review services"},
+    builder:{title:"Build from client to approval",body:"Complete the five stages in order. QuoteBench keeps the calculation trace and governance evidence attached.",next:"rules",action:"Review pricing controls"},
+    quotes:{title:"One register for every revision",body:"Open a quote to continue editing, issue a secure link, or inspect its current status.",next:"activity",action:"View quote activity"},
+    clients:{title:"Keep client records reusable",body:"Client details can be selected in the quote builder to reduce repeat entry and mistakes.",next:"builder",action:"Start a quote"},
+    catalogue:{title:"Create a governed service catalogue",body:"Set pricing, cost, billing frequency and proposal eligibility once, then reuse them consistently.",next:"rules",action:"Configure pricing rules"},
+    rules:{title:"Publish changes deliberately",body:"Draft rule changes stay isolated until they are tested and explicitly published.",next:"catalogue",action:"Review catalogue"},
+    activity:{title:"Read qualified engagement signals",body:"QuoteBench filters low-quality traffic so views and acceptance events remain useful.",next:"delivery",action:"Open send and track"},
+    integrations:{title:"Bring structured data into QuoteBench",body:"Use validated imports to build your catalogue and client records without manual re-entry.",next:"catalogue",action:"Review imported services"},
+    team:{title:"Keep commercial permissions explicit",body:"Use workspace roles to separate ownership, administration and day-to-day quoting.",next:"governance",action:"Review security"},
+    usage:{title:"Monitor workspace capacity",body:"Track quote volume against the current plan before it becomes an operational constraint.",next:"billing",action:"Review plan"},
+    documents:{title:"Control client-facing presentation",body:"Set the brand and delivery defaults used by your proposals and exported documents.",next:"templates",action:"Open templates"},
+    delivery:{title:"Issue secure recipient links",body:"Send proposals from a governed record and follow qualified recipient engagement.",next:"activity",action:"View activity"},
+    templates:{title:"Standardise winning proposal structures",body:"Build reusable content while commercial values continue to come from governed quote data.",next:"builder",action:"Start a quote"},
+    billing:{title:"Understand plan and billing state",body:"Plan information and usage stay connected to the current workspace.",next:"usage",action:"View usage"},
+    governance:{title:"Make trust visible and auditable",body:"Review retention, access and tenant isolation controls for this workspace.",next:"team",action:"Review team roles"},
+    engagement:{title:"Govern what counts as engagement",body:"Control how recipient activity is qualified before it appears as a commercial signal.",next:"activity",action:"View activity"},
+    ai:{title:"Keep AI assistance inside guardrails",body:"Use assistance for drafting and review while prices and approvals remain deterministic.",next:"rules",action:"Review pricing controls"},
+  };
+  const topic=contextual[screen];
+  const quickLinks:[Screen,string,string][]=[["builder","Create a governed quote","Client, scope, pricing and approval"],["catalogue","Configure your services","Reusable prices, costs and billing"],["delivery","Send and track","Secure links and recipient signals"]];
+  return <UtilityLayer title="Help centre" eyebrow={`Help with ${screenTitles[screen]}`} onClose={onClose}><div className="help-feature"><span>01</span><div><h3>{topic.title}</h3><p>{topic.body}</p><button onClick={()=>{onNavigate(topic.next);onClose();}}>{topic.action} →</button></div></div><section className="help-links"><h3>Popular workflows</h3>{quickLinks.map(([target,title,description])=><button key={target} onClick={()=>{onNavigate(target);onClose();}}><span><strong>{title}</strong><small>{description}</small></span><b>→</b></button>)}</section><footer className="help-footer"><span><strong>QuoteBench support</strong><small>Include the quote reference when asking about a specific record.</small></span><a href="mailto:dennis.ohiggins@gmail.com?subject=QuoteBench%20support">Email support</a></footer></UtilityLayer>;
+}
+
+function OverviewScreen({ currentUser, workspace, quotes, events, clients, entitlement, catalogueItems, ruleSet, loading, onCreate, onOpen, onNavigate }: { currentUser:QuoteBenchUser|null; workspace:Workspace|null; quotes:SavedQuote[]; events:SavedEvent[]; clients:ClientRecord[]; entitlement:Entitlement|null; catalogueItems:CatalogueItem[]; ruleSet:RuleSet; loading:boolean; onCreate:()=>void; onOpen:(reference:string)=>void; onNavigate:(screen:Screen)=>void }) {
+  const activeStatuses=new Set<SavedQuote["status"]>(["Draft","Ready","Issued","Viewed"]);
+  const activeQuotes=quotes.filter(quote=>activeStatuses.has(quote.status));
+  const acceptedQuotes=quotes.filter(quote=>quote.status==="Accepted");
+  const resolvedQuotes=quotes.filter(quote=>["Accepted","Declined"].includes(quote.status));
+  const currency=workspace?.currency||quotes[0]?.currency||"GBP";
+  const pipelineValue=activeQuotes.reduce((total,quote)=>total+quote.oneOffTotalMinor+quote.recurringAnnualisedMinor,0);
+  const wonValue=acceptedQuotes.reduce((total,quote)=>total+quote.oneOffTotalMinor+quote.recurringAnnualisedMinor,0);
+  const closeRate=resolvedQuotes.length?Math.round((acceptedQuotes.length/resolvedQuotes.length)*100):0;
+  const recentQuotes=[...quotes].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).slice(0,5);
+  const recentEvents=[...events].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).slice(0,5);
+  const stages:[string,SavedQuote["status"][]][]=[["Draft",["Draft"]],["Ready",["Ready"]],["Sent",["Issued"]],["Viewed",["Viewed"]],["Won",["Accepted"]]];
+  const maxStage=Math.max(1,...stages.map(([,statuses])=>quotes.filter(quote=>statuses.includes(quote.status)).length));
+  const firstName=currentUser?.displayName?.split(/\s+/)[0]||"there";
+  return <div className="commercial-overview">
+    <section className="overview-hero"><div><p>Commercial command centre</p><h1>Good {new Date().getHours()<12?"morning":new Date().getHours()<18?"afternoon":"evening"}, {firstName}.</h1><span>{quotes.length?"Here’s the position across your active quotes and client activity.":"Build a repeatable quoting operation from one governed workspace."}</span></div><div className="overview-actions"><button className="button overview-secondary" onClick={()=>onNavigate("quotes")}>View quote register</button><button className="button overview-primary" onClick={onCreate}>New quote <b>+</b></button></div></section>
+    <section className="overview-metrics" aria-label="Commercial performance"><article><span>Active pipeline</span><strong>{loading?"—":formatMoney(pipelineValue,currency)}</strong><small>{activeQuotes.length} active {activeQuotes.length===1?"quote":"quotes"}</small></article><article><span>Accepted value</span><strong>{loading?"—":formatMoney(wonValue,currency)}</strong><small>{acceptedQuotes.length} accepted {acceptedQuotes.length===1?"proposal":"proposals"}</small></article><article><span>Decision rate</span><strong>{loading?"—":`${closeRate}%`}</strong><small>{resolvedQuotes.length?`${resolvedQuotes.length} resolved decisions`:"No resolved decisions yet"}</small></article><article><span>Plan usage</span><strong>{entitlement?`${entitlement.quotesUsedThisMonth}/${entitlement.monthlyQuoteLimit}`:"—"}</strong><small>{entitlement?.planName??"Loading workspace plan"}</small></article></section>
+    <div className="overview-grid"><section className="overview-panel pipeline-panel"><header><div><span>Pipeline</span><h2>Quote progression</h2></div><button onClick={()=>onNavigate("quotes")}>Open register →</button></header><div className="pipeline-chart">{stages.map(([label,statuses])=>{const stageQuotes=quotes.filter(quote=>statuses.includes(quote.status));const value=stageQuotes.reduce((total,quote)=>total+quote.oneOffTotalMinor+quote.recurringAnnualisedMinor,0);return <article key={label}><div><span>{label}</span><strong>{stageQuotes.length}</strong></div><div className="pipeline-track"><i style={{width:`${Math.max(stageQuotes.length?8:0,(stageQuotes.length/maxStage)*100)}%`}}/></div><small>{formatMoney(value,currency)}</small></article>;})}</div></section><section className="overview-panel readiness-panel"><header><div><span>Workspace readiness</span><h2>Commercial foundation</h2></div></header><button onClick={()=>onNavigate("catalogue")}><span className={catalogueItems.length?"ready":"pending"}>{catalogueItems.length?"✓":"1"}</span><span><strong>Service catalogue</strong><small>{catalogueItems.length?`${catalogueItems.length} services configured`:"Add your first service"}</small></span><b>→</b></button><button onClick={()=>onNavigate("rules")}><span className="ready">✓</span><span><strong>Pricing controls</strong><small>Published version {ruleSet.version}</small></span><b>→</b></button><button onClick={()=>onNavigate("clients")}><span className={clients.length?"ready":"pending"}>{clients.length?"✓":"3"}</span><span><strong>Client records</strong><small>{clients.length?`${clients.length} active clients`:"Add a reusable client record"}</small></span><b>→</b></button></section></div>
+    <div className="overview-grid lower"><section className="overview-panel recent-quotes"><header><div><span>Quote register</span><h2>Recent commercial work</h2></div><button onClick={onCreate}>New quote +</button></header>{recentQuotes.length?<div className="overview-table"><div className="overview-table-head"><span>Quote</span><span>Status</span><span>Value</span><span>Updated</span><span/></div>{recentQuotes.map(quote=><button key={quote.id} onClick={()=>onOpen(quote.reference)}><span><strong>{quote.reference}</strong><small>{quote.clientName}</small></span><Status>{quote.status}</Status><b>{formatMoney(quote.oneOffTotalMinor+quote.recurringAnnualisedMinor,quote.currency)}</b><time>{readableDate(quote.updatedAt)}</time><i>→</i></button>)}</div>:<div className="overview-empty"><span>QB</span><div><strong>Your quote register is ready</strong><p>Create the first governed proposal. Pricing decisions, revisions and recipient activity will be recorded automatically.</p></div><button onClick={onCreate}>Create first quote</button></div>}</section><section className="overview-panel signal-panel"><header><div><span>Live signals</span><h2>Recent activity</h2></div><button onClick={()=>onNavigate("activity")}>View all →</button></header>{recentEvents.length?<div className="overview-events">{recentEvents.map(event=><button key={event.id} onClick={()=>onNavigate("activity")}><span className={`event-dot ${event.eventType.split(".")[1]}`}/><span><strong>{eventCopy[event.eventType]}</strong><small>{event.quoteReference} · {readableDate(event.createdAt)}</small></span></button>)}</div>:<div className="signal-empty"><span>◎</span><strong>No commercial signals yet</strong><p>Recipient views and decisions will appear here after you issue a proposal.</p><button onClick={()=>onNavigate("delivery")}>Open send and track</button></div>}</section></div>
+  </div>;
 }
 
 function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalogueCategories, proposalTypes, ruleSet, onSaved, onRevised, initialStep = "client" }: { reference: string; initialQuote: EditableQuote | null; clients: ClientRecord[]; catalogueItems: CatalogueItem[]; catalogueCategories:ServiceCategory[]; proposalTypes:ProposalType[]; ruleSet: RuleSet; onSaved: () => void; onRevised: (quote: EditableQuote) => void; initialStep?: BuilderStep }) {
@@ -1109,7 +1194,7 @@ function ActivityScreen({ events }: { events: SavedEvent[] }) {
   );
 }
 
-export default function QuoteBench({ currentUser, operatorAccess = false, initialScreen = "builder", initialBuilderStep = "client" }: { currentUser: QuoteBenchUser | null; operatorAccess?: boolean; initialScreen?: Screen; initialBuilderStep?: BuilderStep }) {
+export default function QuoteBench({ currentUser, operatorAccess = false, initialScreen = "overview", initialBuilderStep = "client" }: { currentUser: QuoteBenchUser | null; operatorAccess?: boolean; initialScreen?: Screen; initialBuilderStep?: BuilderStep }) {
   const [screen, setScreen] = useState<Screen>(initialScreen);
   const [activeReference, setActiveReference] = useState("QB-1049");
   const [activeQuote, setActiveQuote] = useState<EditableQuote | null>(null);
@@ -1127,11 +1212,13 @@ export default function QuoteBench({ currentUser, operatorAccess = false, initia
   const [quotesLoading, setQuotesLoading] = useState(Boolean(currentUser));
   const [storageMessage, setStorageMessage] = useState<string | null>(currentUser ? null : "Sign in to QuoteBench to load and save durable workspace quotes.");
   const [mobileNavigationOpen,setMobileNavigationOpen]=useState(false);
+  const [utility,setUtility]=useState<"search"|"notifications"|"help"|null>(null);
+  const [notificationsSeen,setNotificationsSeen]=useState(false);
   const currentUserEmail = currentUser?.email;
 
   useEffect(() => {
     const url = new URL(window.location.href);
-    if (screen === "builder") url.searchParams.delete("screen");
+    if (screen === "overview") url.searchParams.delete("screen");
     else url.searchParams.set("screen", screen);
     window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
   }, [screen]);
@@ -1227,13 +1314,25 @@ export default function QuoteBench({ currentUser, operatorAccess = false, initia
 
   useEffect(()=>{if(!currentUserEmail)return;fetch("/api/workspaces",{cache:"no-store"}).then(async response=>(await response.json()) as {workspaces?:Array<Record<string,unknown>>}).then(payload=>setWorkspaces((payload.workspaces??[]).map(row=>({id:String(row.id),name:String(row.name),currency:String(row.currency),role:String(row.role) as Workspace["role"]})))).catch(()=>undefined);},[currentUserEmail]);
 
+  useEffect(()=>{
+    function handleKeydown(event:KeyboardEvent){
+      if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="k"){event.preventDefault();setUtility("search");}
+      if(event.key==="Escape")setUtility(null);
+    }
+    window.addEventListener("keydown",handleKeydown);
+    return()=>window.removeEventListener("keydown",handleKeydown);
+  },[]);
+
+  function openNotifications(){setNotificationsSeen(true);setUtility("notifications");}
+
   return (
     <div className={`app-shell ${mobileNavigationOpen ? "navigation-open" : ""}`}>
       <Sidebar screen={screen} setScreen={setScreen} currentUser={currentUser} entitlement={entitlement} mobileOpen={mobileNavigationOpen} onClose={()=>setMobileNavigationOpen(false)} operatorAccess={operatorAccess} />
       {mobileNavigationOpen&&<button className="navigation-backdrop" aria-label="Close navigation" onClick={()=>setMobileNavigationOpen(false)}/>}
       <div className="main-shell">
-        <Topbar screen={screen} workspace={workspace} workspaces={workspaces.length?workspaces:workspace?[workspace]:[]} onOpenNavigation={()=>setMobileNavigationOpen(true)} />
+        <Topbar screen={screen} workspace={workspace} workspaces={workspaces.length?workspaces:workspace?[workspace]:[]} onOpenNavigation={()=>setMobileNavigationOpen(true)} onSearch={()=>setUtility("search")} onNotifications={openNotifications} onHelp={()=>setUtility("help")} notificationCount={notificationsSeen?0:Math.min(10,savedEvents.length)} />
         <main className="main-content">
+          {screen === "overview" && <OverviewScreen currentUser={currentUser} workspace={workspace} quotes={savedQuotes} events={savedEvents} clients={clients} entitlement={entitlement} catalogueItems={workspaceCatalogue} ruleSet={activeRuleSet} loading={quotesLoading} onCreate={startNewQuote} onOpen={openQuote} onNavigate={setScreen} />}
           {screen === "builder" && <QuoteBuilder key={activeReference} reference={activeReference} initialQuote={activeQuote} clients={clients} catalogueItems={workspaceCatalogue} catalogueCategories={catalogueCategories} proposalTypes={proposalTypes} ruleSet={activeRuleSet} onSaved={refreshQuotes} onRevised={openRevision} initialStep={initialBuilderStep} />}
           {screen === "quotes" && <QuotesScreen onCreate={startNewQuote} onOpen={openQuote} savedQuotes={savedQuotes} loading={quotesLoading} storageMessage={storageMessage} />}
           {screen === "clients" && <ClientsScreen clients={clients} onSaved={(client) => setClients((current) => [...current.filter((entry) => entry.id !== client.id), client].sort((a, b) => a.name.localeCompare(b.name)))} />}
@@ -1252,6 +1351,9 @@ export default function QuoteBench({ currentUser, operatorAccess = false, initia
           {screen === "governance" && <GovernanceScreen />}
         </main>
       </div>
+      {utility==="search"&&<SearchPalette quotes={savedQuotes} clients={clients} onClose={()=>setUtility(null)} onNavigate={setScreen} onOpenQuote={openQuote}/>} 
+      {utility==="notifications"&&<NotificationsPanel events={savedEvents} onClose={()=>setUtility(null)} onNavigate={setScreen}/>} 
+      {utility==="help"&&<HelpPanel screen={screen} onClose={()=>setUtility(null)} onNavigate={setScreen}/>} 
     </div>
   );
 }
