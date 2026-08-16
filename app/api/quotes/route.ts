@@ -69,11 +69,32 @@ export async function POST(request: Request) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
       return Response.json({ error: "Enter a valid client contact email address." }, { status: 400 });
     }
+    if (status === "Ready" && validUntil < new Date().toISOString().slice(0, 10)) {
+      return Response.json({ error: "The proposal validity date must not have passed before it can be marked ready." }, { status: 422 });
+    }
     const tenantId = member.tenantId;
     await assertQuoteCapacity(tenantId, reference);
     const legal = await resolveLegalContent(tenantId, body.document?.proposalTypeId?.trim());
     if (status === "Ready" && legal.missingMandatory.length) {
       return Response.json({ error: "Mandatory legal policies require a published version before this proposal can be marked ready." }, { status: 422 });
+    }
+    const proposalPages = normaliseProposalPages(body.document?.pages);
+    if (status === "Ready") {
+      const enabledBlockTypes = new Set(
+        proposalPages.flatMap((page) => page.blocks)
+          .filter((block) => block.enabled !== false)
+          .map((block) => block.type),
+      );
+      const requiredBlocks = ["pricing_table", "terms", "signature"] as const;
+      const missingBlocks = requiredBlocks.filter((type) => !enabledBlockTypes.has(type));
+      if (missingBlocks.length) {
+        const labels: Record<(typeof requiredBlocks)[number], string> = {
+          pricing_table: "pricing",
+          terms: "terms",
+          signature: "acceptance",
+        };
+        return Response.json({ error: `Proposal requires governed ${missingBlocks.map((type) => labels[type]).join(", ")} content before it can be marked ready.` }, { status: 422 });
+      }
     }
     const document = {
       title: body.document?.title?.trim() || "Transformation delivery partnership",
@@ -85,7 +106,7 @@ export async function POST(request: Request) {
       templateId:body.document?.templateId?.trim().slice(0,160)||undefined,
       depositMinor: Math.max(0,Math.round(Number(body.document?.depositMinor??0))),
       options:(body.document?.options??[]).slice(0,12).map(option=>({id:String(option.id||crypto.randomUUID()),label:String(option.label??"").trim().slice(0,160)})).filter(option=>option.label),
-      pages:normaliseProposalPages(body.document?.pages),
+      pages:proposalPages,
       legalContent: legal.snapshots,
     };
 
