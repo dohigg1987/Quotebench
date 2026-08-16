@@ -79,9 +79,16 @@ test("Proposal studio supports multi-page, multi-format and reusable block compo
   const editor = await source("app/proposal-editor.tsx");
   const recipient = await source("app/q/[token]/page.tsx");
   const quoteBuilder = await source("app/quote-bench.tsx");
+  const quoteRoute = await source("app/api/quotes/route.ts");
   for (const capability of ["Standard page", "Wide page", "Cover page", "Block library", "feature_grid", "timeline", "team", "faq", "pricing_table", "signature"]) assert.match(editor, new RegExp(capability, "i"));
   assert.match(recipient, /quote\.document\.pages/);
-  assert.match(quoteBuilder, /Start from a reusable template/);
+  assert.match(quoteBuilder, /Selected template/);
+  assert.match(quoteBuilder, /quote-workflow/);
+  assert.match(quoteBuilder, /Proposal design workspace/);
+  assert.match(quoteBuilder, /cloneTemplatePages/);
+  assert.match(quoteBuilder, /templateId:selectedTemplateId/);
+  assert.match(quoteBuilder, /Standard template for this quote/);
+  assert.match(quoteRoute, /templateId:body\.document\?\.templateId/);
   assert.doesNotMatch(quoteBuilder, /Consulting rate card/i);
 });
 
@@ -99,6 +106,11 @@ test("Service catalogue supports category hierarchy, proposal types and quote-le
   assert.match(catalogueScreen,/Proposal-type availability/);
   assert.match(quoteBuilder,/toggle each eligible service on or off/i);
   assert.match(quoteBuilder,/defaultProposalTypeIds/);
+  assert.match(quoteBuilder,/service-category-accordion/);
+  assert.match(quoteBuilder,/service-subcategory-accordion/);
+  assert.match(quoteBuilder,/aria-expanded=\{categoryOpen\}/);
+  assert.match(quoteBuilder,/aria-expanded=\{subgroupOpen\}/);
+  assert.match(quoteBuilder,/categorySelected/);
   assert.match(recipient,/Service schedule/);
   assert.match(recipient,/Service terms/);
 });
@@ -163,4 +175,7 @@ test("Quote-builder internals use container-responsive layouts", async () => {
   assert.match(styles, /@container proposal-editor \(max-width: 1050px\)[\s\S]*\.proposal-studio \{[^}]*grid-template-columns:150px minmax\(0,1fr\)/);
   assert.match(styles, /@container proposal-editor \(max-width: 780px\)[\s\S]*\.proposal-studio \{ grid-template-columns:1fr; \}/);
   assert.match(styles, /@container proposal-editor \(max-width: 560px\)[\s\S]*\.proposal-block-fields \{ grid-template-columns:1fr; \}/);
+  assert.match(styles, /\.proposal-design-editor \.section-content\s*\{[^}]*container-name:proposal-editor/);
+  assert.match(styles, /\.proposal-design-footer\s*\{[^}]*position:sticky/);
+  assert.match(styles, /\.button:disabled,\.proposal-support-actions \.disabled-upload\s*\{[^}]*opacity:1/);
 });
