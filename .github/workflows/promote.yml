@@ -139,7 +139,8 @@ jobs:
           done
           test "$status" = "200"
           grep -q '"status":"ok"' health.json
-           curl --fail --silent --show-error "$PUBLIC_SITE_URL/auth/sign-in" | grep -q "Welcome to QuoteBench"
+          curl --fail --silent --show-error --output sign-in.html "$PUBLIC_SITE_URL/auth/sign-in"
+          grep -q "Welcome to QuoteBench" sign-in.html
       - name: Record successful environment deployment
         shell: bash
         env:
@@ -184,3 +185,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "$GOLD_TAG" -m "Production last-known-good ${{ inputs.commit }}"
           git push origin "$GOLD_TAG"
+
