@@ -1025,6 +1025,43 @@ button.customer-admin-row:hover,
   box-shadow: 0 9px 20px rgba(67, 24, 255, .22);
 }
 
+/* QuoteBench brand assets */
+.brand-mark {
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  padding: 2px;
+  border: 1px solid var(--qb-slate-200);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 7px 18px rgba(17, 28, 68, .12);
+}
+
+.brand-mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.signin-logo {
+  display: block;
+  width: 164px;
+  height: auto;
+  margin: -12px auto 24px;
+  object-fit: contain;
+}
+
+.admin-brand > .brand-mark {
+  width: 38px;
+  height: 38px;
+  padding: 2px;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 7px 18px rgba(17, 28, 68, .12);
+}
+
 .operator-context-strip,
 .operator-usage-item {
   border: 0;
