@@ -5,10 +5,12 @@ const environment = process.env.DEPLOY_ENV;
 const hyperdriveId = process.env.CLOUDFLARE_HYPERDRIVE_ID?.trim();
 const publicSiteUrl = process.env.PUBLIC_SITE_URL?.trim();
 const commit = process.env.BUILD_COMMIT_SHA?.trim();
+const artifactDigest = process.env.BUILD_ARTIFACT_SHA256?.trim();
 if (!environment || !["dev", "test", "preprod", "production"].includes(environment)) throw new Error("DEPLOY_ENV must be dev, test, preprod or production.");
 if (!hyperdriveId) throw new Error("CLOUDFLARE_HYPERDRIVE_ID is required.");
 if (!publicSiteUrl || !/^https:\/\//.test(publicSiteUrl)) throw new Error("PUBLIC_SITE_URL must be an HTTPS URL.");
 if (!commit || !/^[a-f0-9]{40}$/.test(commit)) throw new Error("BUILD_COMMIT_SHA must be a full Git commit SHA.");
+if (!artifactDigest || !/^[a-f0-9]{64}$/.test(artifactDigest)) throw new Error("BUILD_ARTIFACT_SHA256 must be a SHA-256 digest.");
 
 const environments = JSON.parse(await readFile(new URL("../deployment/environments.json", import.meta.url), "utf8"));
 const selected = environments[environment];
@@ -26,12 +28,13 @@ const config = {
   placement: { mode: "smart" },
   images: { binding: "IMAGES" },
   observability: { enabled: true, logs: { enabled: true, invocation_logs: true, head_sampling_rate: 1 } },
-  vars: { APP_ENV: environment, BUILD_COMMIT_SHA: commit, PUBLIC_SITE_URL: publicSiteUrl },
+  version_metadata: { binding: "CF_VERSION_METADATA" },
+  vars: { APP_ENV: environment, BUILD_COMMIT_SHA: commit, BUILD_ARTIFACT_SHA256: artifactDigest, PUBLIC_SITE_URL: publicSiteUrl },
   hyperdrive: [{ binding: "HYPERDRIVE", id: hyperdriveId }],
   r2_buckets: [{ binding: "BUCKET", bucket_name: selected.r2Bucket }],
   queues: {
     producers: [{ binding: "PDF_QUEUE", queue: selected.pdfQueue }],
-    consumers: [{ queue: selected.pdfQueue, max_batch_size: 1, max_batch_timeout: 5, max_retries: 4, dead_letter_queue: `${selected.pdfQueue}-dead-letter` }],
+    consumers: [{ queue: selected.pdfQueue, max_batch_size: 1, max_batch_timeout: 5, max_retries: 4, max_concurrency: 3, dead_letter_queue: `${selected.pdfQueue}-dead-letter` }],
   },
   triggers: { crons: ["*/5 * * * *"] },
 };
