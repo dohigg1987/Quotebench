@@ -2,4 +2,11 @@
 
 import { createAuthClient } from "@neondatabase/auth/next";
 
-export const authClient = createAuthClient();
+type QuoteBenchAuthClient = ReturnType<typeof createAuthClient>;
+
+let instance: QuoteBenchAuthClient | undefined;
+
+export function getAuthClient(): QuoteBenchAuthClient {
+  instance ??= createAuthClient();
+  return instance;
+}
