@@ -8,6 +8,10 @@ interface Env {
   HYPERDRIVE?: Hyperdrive;
   DATABASE_URL?: string;
   PDF_QUEUE?: Queue;
+  APP_ENV?: string;
+  BUILD_COMMIT_SHA?: string;
+  BUILD_ARTIFACT_SHA256?: string;
+  CF_VERSION_METADATA?: WorkerVersionMetadata;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -44,15 +48,21 @@ const worker = {
     }
 
     const stateChanging = ["POST", "PUT", "PATCH", "DELETE"].includes(request.method.toUpperCase());
-    const webhookExempt = url.pathname === "/api/billing/webhook";
+    const webhookExempt = url.pathname === "/api/billing/webhook" || url.pathname === "/api/internal/release";
     const requestOrigin = request.headers.get("origin");
     const fetchSite = request.headers.get("sec-fetch-site");
     const crossOrigin = requestOrigin ? requestOrigin !== url.origin : fetchSite === "cross-site";
     const missingBrowserProvenance = !requestOrigin && !fetchSite;
     const rejected = url.pathname.startsWith("/api/") && stateChanging && !webhookExempt && (crossOrigin || missingBrowserProvenance);
-    const response = rejected
-      ? Response.json({ error: "Request origin could not be verified." }, { status: 403 })
-      : await handler.fetch(request, env, ctx);
+    let response: Response;
+    try {
+      response = rejected
+        ? Response.json({ error: "Request origin could not be verified." }, { status: 403 })
+        : await handler.fetch(request, env, ctx);
+    } catch (error) {
+      console.error(JSON.stringify({ event: "request.unhandled_error", environment: env.APP_ENV, path: url.pathname, requestId: request.headers.get("x-request-id"), error: error instanceof Error ? error.message : "unknown" }));
+      throw error;
+    }
     const secured = new Response(response.body, response);
     secured.headers.set("strict-transport-security", "max-age=31536000; includeSubDomains");
     secured.headers.set("x-content-type-options", "nosniff");

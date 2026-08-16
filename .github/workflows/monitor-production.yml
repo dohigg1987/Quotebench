@@ -1,0 +1,87 @@
+name: Monitor QuoteBench production
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: quotebench-production-monitor
+  cancel-in-progress: true
+
+jobs:
+  dependency-and-pricing-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+      - name: Probe health, dependencies, schema and pricing trace
+        id: probe
+        shell: bash
+        run: |
+          set +e
+          healthy=false
+          detail="No successful response"
+          for attempt in 1 2 3; do
+            status=$(curl --silent --show-error --max-time 20 --output health.json --write-out '%{http_code}' https://app.quotebenchhq.com/api/health)
+            if [[ "$status" == "200" ]] && jq -e '.status == "ok" and .checks.database and .checks.objectStorage' health.json >/dev/null; then
+              healthy=true
+              detail="All production assurance checks passed"
+              break
+            fi
+            detail="HTTP ${status}; response failed one or more assurance checks"
+            sleep 5
+          done
+          echo "healthy=$healthy" >> "$GITHUB_OUTPUT"
+          echo "detail=$detail" >> "$GITHUB_OUTPUT"
+      - name: Open, update or resolve the production incident
+        uses: actions/github-script@v7
+        env:
+          HEALTHY: ${{ steps.probe.outputs.healthy }}
+          DETAIL: ${{ steps.probe.outputs.detail }}
+        with:
+          script: |
+            const title = "Production monitor: QuoteBench unhealthy";
+            const { data: issues } = await github.rest.issues.listForRepo({ owner: context.repo.owner, repo: context.repo.repo, state: "open", per_page: 100 });
+            const incident = issues.find(issue => issue.title === title);
+            if (process.env.HEALTHY === "true") {
+              if (incident) await github.rest.issues.update({ owner: context.repo.owner, repo: context.repo.repo, issue_number: incident.number, state: "closed", state_reason: "completed" });
+              return;
+            }
+            const body = `Automated production assurance failed at ${new Date().toISOString()}.\n\n${process.env.DETAIL}\n\nRun: ${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}\n\nNo tenant or customer data is included.`;
+            if (incident) await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: incident.number, body });
+            else await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body, labels: ["incident"] }).catch(() => github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body }));
+      - name: Send optional WhatsApp outage alert
+        if: steps.probe.outputs.healthy != 'true'
+        continue-on-error: true
+        env:
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_WHATSAPP_FROM: ${{ secrets.TWILIO_WHATSAPP_FROM }}
+          ALERT_WHATSAPP_TO: ${{ secrets.ALERT_WHATSAPP_TO }}
+        run: node scripts/send-whatsapp-alert.mjs monitor
+      - name: Emit external dead-man heartbeat
+        if: always()
+        continue-on-error: true
+        env:
+          HEARTBEAT_WEBHOOK_URL: ${{ secrets.HEARTBEAT_WEBHOOK_URL }}
+          HEALTHY: ${{ steps.probe.outputs.healthy }}
+        shell: bash
+        run: |
+          if [[ -z "$HEARTBEAT_WEBHOOK_URL" ]]; then
+            echo "External dead-man heartbeat is not configured; GitHub issue monitoring remains active."
+            exit 0
+          fi
+          suffix=""
+          [[ "$HEALTHY" == "true" ]] || suffix="/fail"
+          curl --fail --silent --show-error --max-time 20 "${HEARTBEAT_WEBHOOK_URL}${suffix}" >/dev/null
+      - name: Fail the run when production is unhealthy
+        if: steps.probe.outputs.healthy != 'true'
+        run: exit 1
