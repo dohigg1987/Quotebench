@@ -4,7 +4,10 @@ import handler from "vinext/server/app-router-entry";
 
 interface Env {
   ASSETS: Fetcher;
-  DB: D1Database;
+  DB?: D1Database;
+  HYPERDRIVE?: Hyperdrive;
+  DATABASE_URL?: string;
+  PDF_QUEUE?: Queue;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -65,6 +68,17 @@ const worker = {
       const [{ processDueWebhookRetries }, { runRetentionJobs }] = await Promise.all([import("../db/integration-store"), import("../db/maintenance-store")]);
       await Promise.all([processDueWebhookRetries(), runRetentionJobs()]);
     })());
+  },
+  async queue(batch: MessageBatch, _env: Env): Promise<void> {
+    const { processPdfJob } = await import("../lib/pdf-jobs");
+    for (const message of batch.messages) {
+      try {
+        await processPdfJob(message.body as import("../lib/pdf-jobs").PdfJobMessage);
+        message.ack();
+      } catch {
+        message.retry({ delaySeconds: Math.min(300, 15 * 2 ** Math.min(message.attempts, 4)) });
+      }
+    }
   },
 };
 

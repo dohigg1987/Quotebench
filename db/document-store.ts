@@ -1,3 +1,4 @@
+import { getDatabase } from "./database.ts";
 export const BLOCK_TYPES = ["heading", "text", "callout", "pricing_table", "options", "image", "video", "testimonial", "feature_grid", "timeline", "team", "faq", "terms", "signature", "spacer"] as const;
 export type BlockType = typeof BLOCK_TYPES[number];
 export type DocumentBlock = { id: string; type: BlockType; title?: string; eyebrow?: string; content?: string; locked?: boolean; enabled?: boolean; display?: "totals" | "lines" | "full"; fileId?: string; mediaUrl?: string; layout?: "full" | "split" | "cards" | "compact"; alignment?: "left" | "center"; columns?: 1 | 2 | 3 | 4; items?: Array<{ id:string; title:string; content:string }> };
@@ -18,7 +19,7 @@ const TEMPLATE_SCHEMA = `CREATE TABLE IF NOT EXISTS document_templates (id TEXT 
 const FILE_SCHEMA = `CREATE TABLE IF NOT EXISTS stored_files (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, quote_reference TEXT, kind TEXT NOT NULL, filename TEXT NOT NULL, content_type TEXT NOT NULL, size_bytes INTEGER NOT NULL, r2_key TEXT NOT NULL, public INTEGER NOT NULL DEFAULT 0, expires_at TEXT, created_by TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`;
 const PDF_SCHEMA = `CREATE TABLE IF NOT EXISTS pdf_jobs (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, quote_reference TEXT NOT NULL, status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, file_id TEXT, error TEXT, requested_by TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`;
 
-async function database() { const { env } = await import("cloudflare:workers"); if (!env.DB) throw new Error("Document storage is unavailable."); return env.DB; }
+async function database() { return getDatabase("Document storage is unavailable."); }
 async function bucket() { const { env } = await import("cloudflare:workers"); if (!env.BUCKET) throw new Error("Object storage is unavailable."); return env.BUCKET; }
 
 async function ensureDocuments(tenantId: string, actorEmail = "system") {

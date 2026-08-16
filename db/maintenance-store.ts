@@ -1,3 +1,5 @@
+import { getDatabase } from "./database.ts";
+
 const TENANT_TABLES = [
   "api_access_log", "api_keys", "billing_events", "billing_invoices", "billing_subscriptions", "brand_profiles", "catalogue_items", "clients", "deal_redemptions",
   "document_templates", "metered_events", "onboarding_state", "pdf_jobs", "personal_templates", "pricing_rule_sets", "quote_events", "quote_recipients", "quotes",
@@ -7,8 +9,7 @@ const TENANT_TABLES = [
 
 export async function runRetentionJobs() {
   const { env } = await import("cloudflare:workers");
-  if (!env.DB) throw new Error("Retention storage is unavailable.");
-  const db = env.DB;
+  const db = await getDatabase("Retention storage is unavailable.");
   const existing = await db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all<{ name: string }>();
   const tableNames = new Set(existing.results.map((row) => row.name));
   const cleanup = [];

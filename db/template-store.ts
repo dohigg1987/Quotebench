@@ -1,3 +1,4 @@
+import { getDatabase } from "./database.ts";
 import { defaultRuleSet } from "../app/demo-data";
 import { money, type CatalogueItem, type RuleSet } from "../packages/pricing-engine/src/index";
 import type { DocumentBlock } from "./document-store";
@@ -26,7 +27,7 @@ export const INDUSTRY_TEMPLATES: IndustryTemplate[] = industries.map((source) =>
 
 const STATE_SCHEMA = `CREATE TABLE IF NOT EXISTS onboarding_state (tenant_id TEXT NOT NULL, user_email TEXT NOT NULL, selected_template TEXT, status TEXT NOT NULL, walkthrough_step INTEGER NOT NULL DEFAULT 0, completed_at TEXT, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (tenant_id, user_email))`;
 const PERSONAL_SCHEMA = `CREATE TABLE IF NOT EXISTS personal_templates (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, snapshot_json TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`;
-async function database() { const { env } = await import("cloudflare:workers"); if (!env.DB) throw new Error("Template storage is unavailable."); return env.DB; }
+async function database() { return getDatabase("Template storage is unavailable."); }
 async function ensure() { const db = await database(); await db.batch([db.prepare(STATE_SCHEMA), db.prepare(PERSONAL_SCHEMA), db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS onboarding_state_tenant_user_unique ON onboarding_state (tenant_id, user_email)"), db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS personal_templates_tenant_name_unique ON personal_templates (tenant_id, name)")]); return db; }
 
 export async function getTemplateWorkspace(tenantId: string, email: string) {
@@ -45,9 +46,9 @@ export async function provisionIndustry(tenantId: string, email: string, templat
   await db.batch([
     ...statements,
     db.prepare("UPDATE pricing_rule_sets SET status = 'Archived', updated_at = CURRENT_TIMESTAMP WHERE tenant_id = ? AND status = 'Published'").bind(tenantId),
-    db.prepare("INSERT OR REPLACE INTO pricing_rule_sets (tenant_id,id,version,status,rule_json,updated_by,published_at) VALUES (?,?,1,'Published',?,?,CURRENT_TIMESTAMP)").bind(tenantId, template.ruleSet.id, JSON.stringify(template.ruleSet), email),
+    db.prepare("INSERT INTO pricing_rule_sets (tenant_id,id,version,status,rule_json,updated_by,published_at) VALUES (?,?,1,'Published',?,?,CURRENT_TIMESTAMP) ON CONFLICT(tenant_id,id) DO UPDATE SET version=excluded.version,status=excluded.status,rule_json=excluded.rule_json,updated_by=excluded.updated_by,published_at=excluded.published_at").bind(tenantId, template.ruleSet.id, JSON.stringify(template.ruleSet), email),
     db.prepare("UPDATE document_templates SET is_default = 0 WHERE tenant_id = ?").bind(tenantId),
-    db.prepare("INSERT OR REPLACE INTO document_templates (id,tenant_id,name,industry,blocks_json,is_default,created_by) VALUES (?,?,?,?,?,1,?)").bind(`industry-${template.id}`, tenantId, `${template.name} proposal`, template.name, JSON.stringify(template.blocks), email),
+    db.prepare("INSERT INTO document_templates (id,tenant_id,name,industry,blocks_json,is_default,created_by) VALUES (?,?,?,?,?,1,?) ON CONFLICT(id) DO UPDATE SET tenant_id=excluded.tenant_id,name=excluded.name,industry=excluded.industry,blocks_json=excluded.blocks_json,is_default=excluded.is_default,created_by=excluded.created_by,updated_at=CURRENT_TIMESTAMP").bind(`industry-${template.id}`, tenantId, `${template.name} proposal`, template.name, JSON.stringify(template.blocks), email),
     db.prepare("INSERT INTO onboarding_state (tenant_id,user_email,selected_template,status,walkthrough_step) VALUES (?,?,?,'InProgress',1) ON CONFLICT(tenant_id,user_email) DO UPDATE SET selected_template=excluded.selected_template,status='InProgress',walkthrough_step=1,updated_at=CURRENT_TIMESTAMP").bind(tenantId, email, template.id),
   ]);
   return getTemplateWorkspace(tenantId, email);

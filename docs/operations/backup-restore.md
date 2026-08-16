@@ -6,7 +6,7 @@ The operator must approve an RPO and RTO before processing live customer data. T
 
 ## Backup layers
 
-1. Use the hosting platform's supported D1 point-in-time recovery capability for database records.
+1. Use Neon point-in-time recovery and isolated recovery branches for database records.
 2. Retain R2 objects under tenant-scoped prefixes and verify object inventory against `stored_files` records.
 3. Produce an owner-authorised QuoteBench JSON export after material configuration changes and before destructive migrations.
 4. Keep deployment source and generated migrations in the protected repository.
@@ -14,7 +14,7 @@ The operator must approve an RPO and RTO before processing live customer data. T
 ## Restore drill
 
 1. Select a non-production recovery target and record the recovery point.
-2. Restore D1 using the platform-supported recovery mechanism.
+2. Restore Neon to an isolated branch at the selected recovery point, verify it, then repoint the target environment's Hyperdrive configuration under change control.
 3. Verify tenant, membership, catalogue, quote, pricing snapshot, recipient, acceptance and audit-record counts.
 4. Verify a representative PDF and attachment from each R2 prefix.
 5. Run tenant-isolation, pricing-determinism and recipient-link tests.

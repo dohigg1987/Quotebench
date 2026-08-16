@@ -1,19 +1,19 @@
-import { getChatGPTUser } from "../../chatgpt-auth";
+import { getCurrentUser } from "../../auth";
 import { requireWorkspaceContext, auditSecurity } from "../../../db/workspace-store";
 import { createEngagementVersion, listEngagementContent, publishEngagementContent, saveEngagementDraft, type EngagementContent } from "../../../db/engagement-store";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const user = await getChatGPTUser();
-  if (!user) return Response.json({ error: "Sign in with ChatGPT to access engagement governance." }, { status: 401 });
+  const user = await getCurrentUser();
+  if (!user) return Response.json({ error: "Sign in to QuoteBench to access engagement governance." }, { status: 401 });
   try { const context = await requireWorkspaceContext(user, ["owner", "admin", "quoter"]); return Response.json({ content: await listEngagementContent(context.tenantId) }); }
   catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Engagement governance is unavailable." }, { status: 403 }); }
 }
 
 export async function POST(request: Request) {
-  const user = await getChatGPTUser();
-  if (!user) return Response.json({ error: "Sign in with ChatGPT to manage engagement governance." }, { status: 401 });
+  const user = await getCurrentUser();
+  if (!user) return Response.json({ error: "Sign in to QuoteBench to manage engagement governance." }, { status: 401 });
   try {
     const context = await requireWorkspaceContext(user, ["owner", "admin"]);
     const body = await request.json() as Partial<EngagementContent> & { action?: "save" | "publish" | "new_version" };

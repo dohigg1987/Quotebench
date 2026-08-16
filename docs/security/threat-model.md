@@ -7,9 +7,9 @@ Customer and recipient identity, proposal content, service pricing, margin assum
 ## Trust boundaries
 
 - browser to public Worker;
-- authenticated ChatGPT identity to workspace membership and role enforcement;
+- authenticated Neon Auth session to workspace membership and role enforcement;
 - recipient token to a single proposal and recipient record;
-- Worker to D1 and R2;
+- Worker through Hyperdrive to Neon Postgres, and to R2;
 - Worker to transactional email, Stripe and customer webhook endpoints;
 - build pipeline to production deployment.
 
@@ -25,7 +25,7 @@ Customer and recipient identity, proposal content, service pricing, margin assum
 | SSRF through webhooks | public HTTPS validation, blocked private/reserved literals, no redirect following | route outbound webhooks through controlled egress for DNS-level enforcement at scale |
 | Acceptance race or repudiation | conditional state transition, evidence certificate, token/IP hashes, snapshot hash | obtain jurisdiction-specific e-signature review |
 | Dependency compromise | lockfile, production audit, Dependabot, CodeQL | add provenance and SBOM attestation |
-| Data loss | D1 recovery, R2 inventory, export, migrations | complete restore drills |
+| Data loss | Neon recovery/PITR, environment branches, R2 inventory, export, compatible migrations | complete restore drills |
 | Operator misuse | hashed operator allowlist, audit events, least privilege | separate duties as the team grows |
 
 ## Review triggers

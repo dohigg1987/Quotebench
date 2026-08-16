@@ -1,3 +1,4 @@
+import { getDatabase } from "./database.ts";
 import { catalogue as seedCatalogue } from "../app/demo-data";
 import type { CatalogueItem } from "../packages/pricing-engine/src/index";
 
@@ -16,7 +17,7 @@ const CATEGORY_SCHEMA = `CREATE TABLE IF NOT EXISTS service_categories (tenant_i
 const PROPOSAL_TYPE_SCHEMA = `CREATE TABLE IF NOT EXISTS proposal_types (tenant_id TEXT NOT NULL,id TEXT NOT NULL,name TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',active INTEGER NOT NULL DEFAULT 1,updated_by TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`;
 const ITEM_TYPE_SCHEMA = `CREATE TABLE IF NOT EXISTS catalogue_item_proposal_types (tenant_id TEXT NOT NULL,item_id TEXT NOT NULL,proposal_type_id TEXT NOT NULL,default_included INTEGER NOT NULL DEFAULT 0)`;
 
-async function database(){const{env}=await import("cloudflare:workers");if(!env.DB)throw new Error("Catalogue storage is unavailable");return env.DB;}
+async function database(){return getDatabase("Catalogue storage is unavailable");}
 const slug=(value:string)=>value.trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,80);
 
 async function ensureCatalogue(tenantId:string){

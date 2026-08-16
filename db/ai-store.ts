@@ -1,3 +1,4 @@
+import { getDatabase } from "./database.ts";
 export const AI_FEATURES = ["proposal_drafting", "service_recommendations", "scope_gap_detection", "clause_comparison", "pricing_commentary", "renewal_risk"] as const;
 export type AiFeature = typeof AI_FEATURES[number];
 export type AiConfig = { providerName: string; endpointUrl: string; model: string; enabledFeatures: AiFeature[]; configured: boolean; updatedAt: string | null };
@@ -14,7 +15,7 @@ const AI_SCHEMA = `CREATE TABLE IF NOT EXISTS ai_provider_configs (
 )`;
 
 async function environment() { const { env } = await import("cloudflare:workers"); return env; }
-async function database() { const env = await environment(); if (!env.DB) throw new Error("AI configuration storage is unavailable."); return env.DB; }
+async function database() { return getDatabase("AI configuration storage is unavailable."); }
 async function ensureAi() { const db = await database(); await db.prepare(AI_SCHEMA).run(); return db; }
 
 export function validateAiEndpoint(value: string) {

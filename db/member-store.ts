@@ -1,4 +1,5 @@
-import type { ChatGPTUser } from "../app/chatgpt-auth";
+import { getDatabase } from "./database.ts";
+import type { QuoteBenchUser } from "../app/auth";
 
 export type WorkspaceRole = "owner" | "admin" | "quoter";
 export type WorkspaceMember = {
@@ -26,9 +27,7 @@ const MEMBERS_SCHEMA = `CREATE TABLE IF NOT EXISTS workspace_members (
 )`;
 
 async function database() {
-  const { env } = await import("cloudflare:workers");
-  if (!env.DB) throw new Error("Workspace membership storage is unavailable.");
-  return env.DB;
+  return getDatabase("Workspace membership storage is unavailable.");
 }
 
 async function ensureMembers() {
@@ -39,7 +38,7 @@ async function ensureMembers() {
   ]);
 }
 
-export async function resolveWorkspaceMember(tenantId: string, user: ChatGPTUser) {
+export async function resolveWorkspaceMember(tenantId: string, user: QuoteBenchUser) {
   await ensureMembers();
   const db = await database();
   const count = await db.prepare("SELECT COUNT(*) AS count FROM workspace_members WHERE tenant_id = ? AND status != 'Removed'")
@@ -66,7 +65,7 @@ export async function resolveWorkspaceMember(tenantId: string, user: ChatGPTUser
   return member ? { email: member.email, displayName: member.display_name, role: member.role, status: member.status, invitedAt: member.invited_at, expiresAt: member.expires_at, joinedAt: member.joined_at } : null;
 }
 
-export async function requireWorkspaceRole(tenantId: string, user: ChatGPTUser, allowed: WorkspaceRole[]) {
+export async function requireWorkspaceRole(tenantId: string, user: QuoteBenchUser, allowed: WorkspaceRole[]) {
   const member = await resolveWorkspaceMember(tenantId, user);
   if (!member || member.status !== "Active" || !allowed.includes(member.role)) {
     throw new Error(`forbidden: this action requires ${allowed.join(" or ")} role`);

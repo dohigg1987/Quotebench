@@ -1,5 +1,5 @@
 import QuoteBench, { type Screen } from "./quote-bench";
-import { chatGPTSignInPath, getChatGPTUser } from "./chatgpt-auth";
+import { signInPath, getCurrentUser } from "./auth";
 import { hasOperatorAccess } from "../db/workspace-store";
 import { QuoteBenchLogo } from "./ui/brand";
 
@@ -11,7 +11,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
   const requestedScreen = (await searchParams).screen;
   const initialScreen = requestedScreen && screens.has(requestedScreen as Screen) ? requestedScreen as Screen : "builder";
   const returnTo = initialScreen === "builder" ? "/" : `/?screen=${initialScreen}`;
-  const user = await getChatGPTUser();
+  const user = await getCurrentUser();
   if (!user) {
     return (
       <main className="signin-shell">
@@ -19,8 +19,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
           <QuoteBenchLogo className="signin-logo" />
           <p className="eyebrow">Governed commercial workspace</p>
           <h1>Sign in to QuoteBench</h1>
-          <p>Operator access requires an authenticated ChatGPT identity. Recipient proposals use separate, tokenised links.</p>
-          <a className="button primary" href={chatGPTSignInPath(returnTo)}>Sign in with ChatGPT</a>
+          <p>Operator access requires an authenticated QuoteBench account. Recipient proposals use separate, tokenised links.</p>
+          <a className="button primary" href={signInPath(returnTo)}>Sign in to QuoteBench</a>
           <small>Pricing, quote records and audit evidence remain tenant-scoped.</small>
         </section>
       </main>

@@ -1,4 +1,4 @@
-import { getChatGPTUser } from "../../../chatgpt-auth";
+import { getCurrentUser } from "../../../auth";
 import { createQuoteRevision, duplicateQuote, getInternalQuote, issueQuote, markQuoteAcceptedOffline } from "../../../../db/quote-store";
 import { requireWorkspaceContext } from "../../../../db/workspace-store";
 
@@ -8,9 +8,9 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ reference: string }> },
 ) {
-  const user = await getChatGPTUser();
+  const user = await getCurrentUser();
   if (!user) {
-    return Response.json({ error: "Sign in with ChatGPT to open saved quotes." }, { status: 401 });
+    return Response.json({ error: "Sign in to QuoteBench to open saved quotes." }, { status: 401 });
   }
   let context; try { context = await requireWorkspaceContext(user, ["owner", "admin", "quoter"]); } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "forbidden" }, { status: 403 }); }
   const { reference } = await params;
@@ -24,9 +24,9 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ reference: string }> },
 ) {
-  const user = await getChatGPTUser();
+  const user = await getCurrentUser();
   if (!user) {
-    return Response.json({ error: "Sign in with ChatGPT to issue quotes." }, { status: 401 });
+    return Response.json({ error: "Sign in to QuoteBench to issue quotes." }, { status: 401 });
   }
   try {
     const context = await requireWorkspaceContext(user, ["owner", "admin", "quoter"]); const tenantId = context.tenantId;

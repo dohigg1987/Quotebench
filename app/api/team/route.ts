@@ -1,4 +1,4 @@
-import { getChatGPTUser } from "../../chatgpt-auth";
+import { getCurrentUser } from "../../auth";
 import { inviteWorkspaceMember, listWorkspaceMembers, updateWorkspaceMember, type WorkspaceRole } from "../../../db/member-store";
 import { requireWorkspaceContext } from "../../../db/workspace-store";
 import { getBillingWorkspace } from "../../../db/billing-store";
@@ -6,8 +6,8 @@ import { getBillingWorkspace } from "../../../db/billing-store";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const user = await getChatGPTUser();
-  if (!user) return Response.json({ error: "Sign in with ChatGPT to access workspace members." }, { status: 401 });
+  const user = await getCurrentUser();
+  if (!user) return Response.json({ error: "Sign in to QuoteBench to access workspace members." }, { status: 401 });
   try {
     const currentMember = await requireWorkspaceContext(user, ["owner", "admin", "quoter"]);
     const billing = await getBillingWorkspace(currentMember.tenantId);
@@ -18,8 +18,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const user = await getChatGPTUser();
-  if (!user) return Response.json({ error: "Sign in with ChatGPT to invite workspace members." }, { status: 401 });
+  const user = await getCurrentUser();
+  if (!user) return Response.json({ error: "Sign in to QuoteBench to invite workspace members." }, { status: 401 });
   try {
     const context = await requireWorkspaceContext(user, ["owner", "admin"]);
     const body = (await request.json()) as { email?: string; role?: "admin" | "quoter" };
@@ -32,8 +32,8 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const user = await getChatGPTUser();
-  if (!user) return Response.json({ error: "Sign in with ChatGPT to manage workspace members." }, { status: 401 });
+  const user = await getCurrentUser();
+  if (!user) return Response.json({ error: "Sign in to QuoteBench to manage workspace members." }, { status: 401 });
   try {
     const context = await requireWorkspaceContext(user, ["owner"]);
     const body = (await request.json()) as { email?: string; action?: "role" | "remove"; role?: WorkspaceRole };

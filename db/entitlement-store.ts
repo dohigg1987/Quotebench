@@ -1,12 +1,11 @@
+import { getDatabase } from "./database.ts";
 import { getBillingWorkspace } from "./billing-store";
 import { PLAN_LIMITS, type UsageMetricKey } from "./plans";
 
 export type UsageMetric = { key: UsageMetricKey; label: string; used: number; limit: number; unit: "count" | "bytes"; state: "healthy" | "warning" | "blocked" };
 
 async function database() {
-  const { env } = await import("cloudflare:workers");
-  if (!env.DB) throw new Error("Entitlement storage is unavailable.");
-  return env.DB;
+  return getDatabase("Entitlement storage is unavailable.");
 }
 
 const metricLabels: Record<UsageMetricKey, string> = {

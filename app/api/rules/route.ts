@@ -1,4 +1,4 @@
-import { getChatGPTUser } from "../../chatgpt-auth";
+import { getCurrentUser } from "../../auth";
 import { createRuleDraft, getRuleWorkspace, publishRuleDraft, saveRuleDraft } from "../../../db/pricing-rule-store";
 import type { RuleSet } from "../../../packages/pricing-engine/src/index";
 import { requireWorkspaceContext } from "../../../db/workspace-store";
@@ -6,14 +6,14 @@ import { requireWorkspaceContext } from "../../../db/workspace-store";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const user = await getChatGPTUser();
-  if (!user) return Response.json({ error: "Sign in with ChatGPT to access pricing rules." }, { status: 401 });
+  const user = await getCurrentUser();
+  if (!user) return Response.json({ error: "Sign in to QuoteBench to access pricing rules." }, { status: 401 });
   try { const context = await requireWorkspaceContext(user, ["owner", "admin"]); return Response.json(await getRuleWorkspace(context.tenantId)); } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "forbidden" }, { status: 403 }); }
 }
 
 export async function POST(request: Request) {
-  const user = await getChatGPTUser();
-  if (!user) return Response.json({ error: "Sign in with ChatGPT to manage pricing rules." }, { status: 401 });
+  const user = await getCurrentUser();
+  if (!user) return Response.json({ error: "Sign in to QuoteBench to manage pricing rules." }, { status: 401 });
   try {
     const context = await requireWorkspaceContext(user, ["owner", "admin"]); const tenantId = context.tenantId;
     const body = (await request.json()) as { action?: string; ruleSet?: RuleSet };

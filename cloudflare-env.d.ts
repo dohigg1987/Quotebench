@@ -13,7 +13,10 @@ declare namespace Cloudflare {
   interface Env {
     ASSETS: Fetcher;
     BUCKET: R2Bucket;
-    DB: D1Database;
+    DB?: D1Database;
+    HYPERDRIVE?: Hyperdrive;
+    DATABASE_URL?: string;
+    PDF_QUEUE?: Queue;
     IMAGES: QuoteBenchImagesBinding;
     EMAIL_API_ENDPOINT?: string;
     EMAIL_API_KEY?: string;

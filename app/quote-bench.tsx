@@ -10,7 +10,7 @@ import {
   type PricedQuote,
   type RuleSet,
 } from "../packages/pricing-engine/src/index";
-import type { ChatGPTUser } from "./chatgpt-auth";
+import type { QuoteBenchUser } from "./auth";
 import { catalogue, defaultRuleSet, seedQuotes } from "./demo-data";
 import IntegrationsScreen from "./integrations-screen";
 import TeamScreen from "./team-screen";
@@ -159,7 +159,7 @@ function Status({ children }: { children: string }) {
   return <span className={`status status-${children.toLowerCase()}`}>{children}</span>;
 }
 
-function Sidebar({ screen, setScreen, currentUser, entitlement, mobileOpen, onClose, operatorAccess }: { screen: Screen; setScreen: (screen: Screen) => void; currentUser: ChatGPTUser | null; entitlement: Entitlement | null; mobileOpen: boolean; onClose: () => void; operatorAccess: boolean }) {
+function Sidebar({ screen, setScreen, currentUser, entitlement, mobileOpen, onClose, operatorAccess }: { screen: Screen; setScreen: (screen: Screen) => void; currentUser: QuoteBenchUser | null; entitlement: Entitlement | null; mobileOpen: boolean; onClose: () => void; operatorAccess: boolean }) {
   const groups: Array<{ id: string; label: string; items: Array<{ key: Screen; label: string; icon: HorizonIconName }> }> = [
     { id: "commercial", label: "Commercial", items: [{ key: "builder", label: "Quote builder", icon: "builder" }, { key: "quotes", label: "Quotes", icon: "quotes" }, { key: "clients", label: "Clients", icon: "clients" }, { key: "catalogue", label: "Services", icon: "services" }, { key: "rules", label: "Pricing rules", icon: "rules" }] },
     { id: "content", label: "Content and governance", items: [{ key: "templates", label: "Templates", icon: "templates" }, { key: "documents", label: "Brand and delivery", icon: "documents" }, { key: "engagement", label: "Engagement governance", icon: "engagement" }, { key: "ai", label: "AI assistance", icon: "ai" }] },
@@ -183,15 +183,15 @@ function Sidebar({ screen, setScreen, currentUser, entitlement, mobileOpen, onCl
         <div className="usage-bar"><span style={{ width: `${Math.min(100, ((entitlement?.quotesUsedThisMonth ?? 0) / (entitlement?.monthlyQuoteLimit ?? 50)) * 100)}%` }} /></div>
         <p><strong>{entitlement?.quotesUsedThisMonth ?? 0}</strong> of {entitlement?.monthlyQuoteLimit ?? 50} quotes this month</p>
         {currentUser ? (
-          <a className="workspace-person" href="/signout-with-chatgpt?return_to=%2F">
+          <a className="workspace-person" href="/auth/sign-out?return_to=%2F">
             <span className="avatar">{currentUser.displayName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span>
             <span><strong>{currentUser.displayName}</strong><small>Owner · sign out</small></span>
             <span aria-hidden="true">⋯</span>
           </a>
         ) : (
-          <a className="workspace-person" href="/signin-with-chatgpt?return_to=%2F">
+          <a className="workspace-person" href="/auth/sign-in?return_to=%2F">
             <span className="avatar">?</span>
-            <span><strong>Sign in to save</strong><small>ChatGPT identity required</small></span>
+            <span><strong>Sign in to save</strong><small>Secure account required</small></span>
             <span aria-hidden="true">›</span>
           </a>
         )}
@@ -1109,7 +1109,7 @@ function ActivityScreen({ events }: { events: SavedEvent[] }) {
   );
 }
 
-export default function QuoteBench({ currentUser, operatorAccess = false, initialScreen = "builder", initialBuilderStep = "client" }: { currentUser: ChatGPTUser | null; operatorAccess?: boolean; initialScreen?: Screen; initialBuilderStep?: BuilderStep }) {
+export default function QuoteBench({ currentUser, operatorAccess = false, initialScreen = "builder", initialBuilderStep = "client" }: { currentUser: QuoteBenchUser | null; operatorAccess?: boolean; initialScreen?: Screen; initialBuilderStep?: BuilderStep }) {
   const [screen, setScreen] = useState<Screen>(initialScreen);
   const [activeReference, setActiveReference] = useState("QB-1049");
   const [activeQuote, setActiveQuote] = useState<EditableQuote | null>(null);
@@ -1125,7 +1125,7 @@ export default function QuoteBench({ currentUser, operatorAccess = false, initia
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [quotesLoading, setQuotesLoading] = useState(Boolean(currentUser));
-  const [storageMessage, setStorageMessage] = useState<string | null>(currentUser ? null : "Sign in with ChatGPT to load and save durable workspace quotes.");
+  const [storageMessage, setStorageMessage] = useState<string | null>(currentUser ? null : "Sign in to QuoteBench to load and save durable workspace quotes.");
   const [mobileNavigationOpen,setMobileNavigationOpen]=useState(false);
   const currentUserEmail = currentUser?.email;
 

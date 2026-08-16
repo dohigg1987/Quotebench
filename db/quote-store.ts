@@ -1,3 +1,4 @@
+import { getDatabase } from "./database.ts";
 const QUOTES_SCHEMA = `CREATE TABLE IF NOT EXISTS quotes (
   id TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
@@ -136,9 +137,7 @@ type QuoteWrite = Omit<StoredQuote, "updatedAt" | "shareToken" | "issuedAt" | "f
 };
 
 async function database() {
-  const { env } = await import("cloudflare:workers");
-  if (!env.DB) throw new Error("Quote storage is unavailable");
-  return env.DB;
+  return getDatabase("Quote storage is unavailable");
 }
 
 async function ensureSchema() {

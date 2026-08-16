@@ -1,4 +1,4 @@
-import { getChatGPTUser } from "../../chatgpt-auth";
+import { getCurrentUser } from "../../auth";
 import { assertQuoteCapacity, getWorkspaceEntitlement, listQuoteEvents, listQuotes, upsertQuote } from "../../../db/quote-store";
 import { money, price } from "../../../packages/pricing-engine/src/index";
 import { listCatalogueItems, listCatalogueWorkspace } from "../../../db/catalogue-store";
@@ -28,11 +28,11 @@ type SaveQuoteBody = {
 };
 
 function unauthorised() {
-  return Response.json({ error: "Sign in with ChatGPT to access saved quotes." }, { status: 401 });
+  return Response.json({ error: "Sign in to QuoteBench to access saved quotes." }, { status: 401 });
 }
 
 export async function GET() {
-  const user = await getChatGPTUser();
+  const user = await getCurrentUser();
   if (!user) return unauthorised();
   const member = await requireWorkspaceContext(user, ["owner", "admin", "quoter"]).catch(() => null);
   if (!member) return Response.json({ error: "forbidden: active workspace membership is required" }, { status: 403 });
@@ -48,7 +48,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const user = await getChatGPTUser();
+  const user = await getCurrentUser();
   if (!user) return unauthorised();
   const member = await requireWorkspaceContext(user, ["owner", "admin", "quoter"]).catch(() => null);
   if (!member) return Response.json({ error: "forbidden: active workspace membership is required" }, { status: 403 });

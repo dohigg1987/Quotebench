@@ -10,7 +10,7 @@
     "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vite",
     "build": "bash scripts/build-verified.sh",
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
-    "test": "node --experimental-strip-types --test tests/pricing-engine.test.mjs tests/security-hardening.test.mjs tests/pdf-engine.test.mjs tests/file-validation.test.mjs tests/proposal-puck-data.test.mjs tests/proposal-metadata.test.mjs && node --test tests/enterprise-controls.test.mjs && npm run build && node --test tests/rendered-html.test.mjs tests/accessibility.test.mjs",
+    "test": "node --experimental-strip-types --test tests/pricing-engine.test.mjs tests/security-hardening.test.mjs tests/pdf-engine.test.mjs tests/file-validation.test.mjs tests/proposal-puck-data.test.mjs tests/proposal-metadata.test.mjs tests/database-compatibility.test.mjs && node --test tests/enterprise-controls.test.mjs && npm run build && node --test tests/rendered-html.test.mjs tests/accessibility.test.mjs",
     "test:engine": "node --experimental-strip-types --test tests/pricing-engine.test.mjs",
     "typecheck": "tsc --noEmit --pretty false",
     "audit:production": "npm audit --omit=dev --audit-level=high",
@@ -19,9 +19,11 @@
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate"
   },
   "dependencies": {
+    "@neondatabase/auth": "^0.5.0-beta",
     "@puckeditor/core": "0.22.4",
     "drizzle-orm": "0.45.2",
     "next": "^16.3.1",
+    "pg": "^8.23.0",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },
@@ -30,6 +32,7 @@
     "@cloudflare/workers-types": "^4.20260702.1",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
+    "@types/pg": "^8.21.0",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",
