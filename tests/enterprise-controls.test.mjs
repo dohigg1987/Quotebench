@@ -118,3 +118,16 @@ test("Advanced CPQ, engagement governance, ordered e-signature and BYO AI are in
   assert.match(ai, /human must approve every change/i);
   assert.doesNotMatch(ai, /openai\.com|anthropic\.com|googleapis\.com/i);
 });
+
+test("Enterprise shell groups navigation and contains the quote layout responsively", async () => {
+  const quoteBench = await source("app/quote-bench.tsx");
+  const css = await source("app/globals.css");
+  for (const group of ["Commercial", "Content and governance", "Operations", "Administration"]) assert.match(quoteBench, new RegExp(group));
+  assert.match(quoteBench, /aria-expanded/);
+  assert.match(quoteBench, /navigation-backdrop/);
+  assert.match(css, /grid-template-columns:minmax\(0,1fr\) minmax\(300px,340px\)/);
+  assert.match(css, /@media \(max-width: 1320px\)[\s\S]*\.builder-grid \{ grid-template-columns:1fr; \}/);
+  assert.match(css, /\.builder-workspace \{[^}]*overflow:hidden/);
+  assert.match(css, /\.line-table \{[^}]*overflow-x:auto/);
+  assert.match(css, /@media \(max-width: 1024px\)[\s\S]*transform:translateX\(-105%\)/);
+});
