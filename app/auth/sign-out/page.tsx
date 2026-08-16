@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { authClient } from "../../../lib/auth/client";
+import { getAuthClient } from "../../../lib/auth/client";
 
 export default function SignOutPage() {
   const [failed, setFailed] = useState(false);
@@ -9,6 +9,7 @@ export default function SignOutPage() {
   useEffect(() => {
     const returnTo = new URLSearchParams(window.location.search).get("return_to") || "/";
     const safeReturnTo = returnTo.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/";
+    const authClient = getAuthClient();
     void authClient.signOut().then(({ error }) => {
       if (error) setFailed(true);
       else window.location.replace(safeReturnTo);
