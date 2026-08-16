@@ -28,6 +28,8 @@ import AiAssistanceScreen from "./ai-assistance-screen";
 import type { DocumentPage, DocumentTemplate } from "../db/document-store";
 import type { ProposalType, ServiceCategory } from "../db/catalogue-store";
 
+const CURRENT_DAY = new Date().toISOString().slice(0, 10);
+
 type Screen = "builder" | "quotes" | "clients" | "catalogue" | "rules" | "activity" | "integrations" | "team" | "usage" | "documents" | "delivery" | "templates" | "billing" | "governance" | "engagement" | "ai" | "operator";
 type Workspace = { id:string; name:string; currency:string; role:"owner"|"admin"|"quoter" };
 type SelectedLine = { itemId: string; quantity: number; discount: number };
@@ -198,7 +200,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
   });
   const [quoteDiscount, setQuoteDiscount] = useState(initialQuote?.answers.quoteDiscount ?? 0);
   const [pickerOpen, setPickerOpen] = useState(true);
-  const [builderStep, setBuilderStep] = useState<"commercial" | "proposal">("commercial");
+  const [builderStep, setBuilderStep] = useState<"commercial" | "proposal" | "review">("commercial");
   const [openServiceCategories, setOpenServiceCategories] = useState<Record<string, boolean>>({});
   const [openServiceSubgroups, setOpenServiceSubgroups] = useState<Record<string, boolean>>({});
   const [explainLine, setExplainLine] = useState<string | null>(null);
@@ -209,6 +211,8 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
   const [sharePath, setSharePath] = useState<string | null>(initialQuote?.shareToken ? `/q/${initialQuote.shareToken}` : null);
   const [revising, setRevising] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
+  const [issuing, setIssuing] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [quoteFiles, setQuoteFiles] = useState<QuoteFile[]>([]);
   const [proposalTemplates,setProposalTemplates]=useState<DocumentTemplate[]>([]);
   const [pdfState, setPdfState] = useState<string | null>(null);
@@ -221,6 +225,10 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
   useEffect(() => {
     if (preview) window.scrollTo({ top: 0, behavior: "auto" });
   }, [preview]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [builderStep]);
 
   useEffect(() => {
     fetch(hasSaved?`/api/documents?reference=${encodeURIComponent(reference)}`:"/api/documents", { cache: "no-store" }).then(async (response) => (await response.json()) as { files?: QuoteFile[];templates?:DocumentTemplate[] }).then((payload) => {
@@ -330,6 +338,18 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
   const eligibleCatalogue=catalogueItems.filter(item=>!proposalTypeId||!item.proposalTypeIds?.length||item.proposalTypeIds.includes(proposalTypeId));
   const categoryLabel=(id?:string)=>catalogueCategories.find(category=>category.id===id)?.name??id??"Other";
   const serviceGroups=[...new Set(eligibleCatalogue.map(item=>item.categoryId))].map(categoryId=>({categoryId,subgroups:[...new Set(eligibleCatalogue.filter(item=>item.categoryId===categoryId).map(item=>item.subcategoryId??""))].map(subcategoryId=>({subcategoryId,items:eligibleCatalogue.filter(item=>item.categoryId===categoryId&&(item.subcategoryId??"")===subcategoryId)}))}));
+  const enabledProposalBlocks = proposalPages.flatMap((page) => page.blocks).filter((block) => block.enabled !== false);
+  const requiredProposalBlocks = ["pricing_table", "terms", "signature"] as const;
+  const requiredQuestionsComplete = (ruleSet.questions ?? []).filter((question) => question.required).every((question) => Boolean(answers[question.id]));
+  const reviewReadiness = [
+    { id:"recipient", label:"Recipient and validity", detail:"Named client, contact, email and a current validity date", complete:Boolean(clientName.trim() && contactName.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail.trim()) && validUntil >= CURRENT_DAY), step:"commercial" as const },
+    { id:"pricing", label:"Commercial calculation", detail:"At least one priced service with no engine errors", complete:Boolean(priced && lines.length > 0 && pricingErrors.length === 0 && requiredQuestionsComplete), step:"commercial" as const },
+    { id:"proposal", label:"Proposal content", detail:"A titled page set containing pricing, terms and acceptance controls", complete:Boolean(proposalTitle.trim() && proposalPages.length > 0 && requiredProposalBlocks.every((type) => enabledProposalBlocks.some((block) => block.type === type))), step:"proposal" as const },
+    { id:"identity", label:"Brand and document identity", detail:"A client-facing brand and traceable quote-specific page set", complete:Boolean(brandName.trim() && brandInitials.trim() && proposalPages.length), step:"proposal" as const },
+  ];
+  const completedReadiness = reviewReadiness.filter((item) => item.complete).length;
+  const readyToSubmit = reviewReadiness.every((item) => item.complete);
+  const pdfBusy = pdfState === "Queueing PDF…" || pdfState === "Generating PDF…";
 
   async function saveQuote(status: "Draft" | "Ready") {
     setSaving(status);
@@ -370,6 +390,8 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
   }
 
   async function issueCurrentQuote() {
+    if (issuing || lifecycleStatus !== "Ready") return;
+    setIssuing(true);
     setNotice(null);
     try {
       const response = await fetch(`/api/quotes/${encodeURIComponent(reference)}`, {
@@ -385,6 +407,18 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
       onSaved();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "The quote could not be issued.");
+    } finally {
+      setIssuing(false);
+    }
+  }
+
+  async function copyRecipientLink() {
+    if (!sharePath) return;
+    try {
+      await navigator.clipboard.writeText(new URL(sharePath, window.location.origin).toString());
+      setNotice("Secure recipient link copied to the clipboard.");
+    } catch {
+      setNotice("The recipient link could not be copied. Open it and copy the address from the browser.");
     }
   }
 
@@ -436,27 +470,42 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
   }
 
   async function uploadAttachment(file?: File) {
-    if (!file || !hasSaved) return;
-    const form = new FormData(); form.set("file", file); form.set("kind", "attachment"); form.set("reference", reference);
-    const response = await fetch("/api/uploads", { method: "POST", body: form });
-    const payload = (await response.json()) as { file?: QuoteFile; error?: string };
-    if (!response.ok || !payload.file) { setNotice(payload.error ?? "The attachment could not be uploaded."); return; }
-    setQuoteFiles((current) => [...current, payload.file!]); setNotice(`${payload.file.filename} attached to ${reference}.`);
+    if (!file || !hasSaved || uploading) return;
+    setUploading(true);
+    try {
+      const form = new FormData(); form.set("file", file); form.set("kind", "attachment"); form.set("reference", reference);
+      const response = await fetch("/api/uploads", { method: "POST", body: form });
+      const payload = (await response.json()) as { file?: QuoteFile; error?: string };
+      if (!response.ok || !payload.file) throw new Error(payload.error ?? "The attachment could not be uploaded.");
+      setQuoteFiles((current) => [...current, payload.file!]); setNotice(`${payload.file.filename} attached to ${reference}.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "The attachment could not be uploaded.");
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function uploadProposalImage(file:File){if(!hasSaved){setNotice("Save the draft before adding proposal images.");return null;}const form=new FormData();form.set("file",file);form.set("kind","image");form.set("reference",reference);const response=await fetch("/api/uploads",{method:"POST",body:form});const payload=await response.json()as{file?:QuoteFile;error?:string};if(!response.ok||!payload.file){setNotice(payload.error??"The image could not be uploaded.");return null;}setQuoteFiles(current=>[...current,payload.file!]);return payload.file.id;}
 
   async function requestPdf() {
+    if (!hasSaved || pdfState === "Queueing PDF…" || pdfState === "Generating PDF…") return;
     setPdfState("Queueing PDF…");
     const response = await fetch("/api/pdfs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reference }) });
     const payload = (await response.json()) as { job?: { id: string }; error?: string };
     if (!response.ok || !payload.job) { setPdfState(payload.error ?? "PDF generation failed."); return; }
     setPdfState("Generating PDF…");
-    window.setTimeout(async () => { const statusResponse = await fetch(`/api/pdfs?id=${encodeURIComponent(payload.job!.id)}`, { cache: "no-store" }); const status = (await statusResponse.json()) as { job?: { status?: string }; downloadPath?: string | null; error?: string }; setPdfState(status.downloadPath ? `PDF ready|${status.downloadPath}` : status.job?.status === "Failed" ? status.error ?? "PDF generation failed." : "PDF generation queued. Check again shortly."); }, 350);
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, attempt === 0 ? 500 : 1500));
+      const statusResponse = await fetch(`/api/pdfs?id=${encodeURIComponent(payload.job.id)}`, { cache: "no-store" });
+      const status = (await statusResponse.json()) as { job?: { status?: string }; downloadPath?: string | null; error?: string };
+      if (status.downloadPath) { setPdfState(`PDF ready|${status.downloadPath}`); return; }
+      if (!statusResponse.ok || status.job?.status === "Failed") { setPdfState(status.error ?? "PDF generation failed."); return; }
+    }
+    setPdfState("PDF generation is taking longer than expected. It remains queued and can be checked again.");
   }
 
   if (preview && priced) {
-    return <QuotePreview quote={priced} clientName={clientName} reference={reference} title={proposalTitle} introduction={proposalIntroduction} scopeHeading={scopeHeading} brandName={brandName} brandInitials={brandInitials} pages={proposalPages} options={proposalOptions} onBack={() => setPreview(false)} />;
+    return <QuotePreview quote={priced} clientName={clientName} reference={reference} title={proposalTitle} introduction={proposalIntroduction} scopeHeading={scopeHeading} brandName={brandName} brandInitials={brandInitials} validUntil={validUntil} pages={proposalPages} options={proposalOptions} onBack={() => setPreview(false)} />;
   }
 
   return (
@@ -468,18 +517,9 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
         </div>
         <div className="heading-actions">
           <button className="button secondary" onClick={() => saveQuote("Draft")} disabled={saving !== null || !["Draft", "Ready"].includes(lifecycleStatus)}>{saving === "Draft" ? "Saving…" : "Save draft"}</button>
-          <button className="button secondary" onClick={() => priced && setPreview(true)} disabled={!priced}>Preview</button>
-          <button
-            className="button primary"
-            disabled={!priced || lines.length === 0 || saving !== null || !["Draft", "Ready"].includes(lifecycleStatus)}
-            onClick={() => saveQuote("Ready")}
-          >
-            {saving === "Ready" ? "Checking…" : "Mark ready"}
-          </button>
-          {(lifecycleStatus === "Ready" || lifecycleStatus === "Issued" || lifecycleStatus === "Viewed") && <button className="button primary issue-button" onClick={issueCurrentQuote}>{sharePath ? "Link issued" : "Issue secure link"}</button>}
+          <button className="button primary" onClick={() => setBuilderStep("review")}>Review and issue</button>
           {hasSaved && <button className="button secondary" onClick={duplicateCurrentQuote} disabled={duplicating}>{duplicating ? "Duplicating…" : "Duplicate as draft"}</button>}
           {locked && lifecycleStatus !== "Accepted" && <button className="button primary" onClick={createRevision} disabled={revising}>{revising ? "Creating…" : "Create revision"}</button>}
-          {["Issued", "Viewed"].includes(lifecycleStatus) && <button className="button secondary" onClick={acceptOffline}>Record offline acceptance</button>}
         </div>
       </div>
 
@@ -490,7 +530,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
       <nav className="quote-workflow" aria-label="Quote workflow">
         <button className={builderStep === "commercial" ? "active" : "complete"} aria-current={builderStep === "commercial" ? "step" : undefined} onClick={() => setBuilderStep("commercial")}><span>1</span><span><strong>Configure quote</strong><small>Client, services and pricing</small></span></button>
         <button className={builderStep === "proposal" ? "active" : proposalPages.length ? "complete" : ""} aria-current={builderStep === "proposal" ? "step" : undefined} onClick={() => setBuilderStep("proposal")}><span>2</span><span><strong>Proposal design</strong><small>Template, pages and content</small></span></button>
-        <button disabled={!priced} onClick={() => priced && setPreview(true)}><span>3</span><span><strong>Review and issue</strong><small>Preview the client experience</small></span></button>
+        <button className={builderStep === "review" ? "active" : lifecycleStatus !== "Draft" ? "complete" : ""} aria-current={builderStep === "review" ? "step" : undefined} onClick={() => setBuilderStep("review")}><span>3</span><span><strong>Review and issue</strong><small>Validate, approve and publish</small></span></button>
       </nav>
 
       {builderStep === "commercial" ? (
@@ -614,10 +654,10 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
           errors={pricingErrors}
           discount={quoteDiscount}
           setDiscount={setQuoteDiscount}
-          onPreview={() => priced && setPreview(true)}
+          onPreview={() => setBuilderStep("review")}
         />
       </div>
-      ) : (
+      ) : builderStep === "proposal" ? (
         <section className="proposal-design-page">
           <header className="proposal-design-header">
             <div><p className="eyebrow">Proposal design workspace</p><h2>Shape the client document</h2><p>The selected standard template is copied into this quote. Changes here do not alter the reusable master template or governed pricing.</p></div>
@@ -651,7 +691,55 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
           {quoteFiles.length > 0 && <div className="quote-files">{quoteFiles.map((file) => <a key={file.id} href={`/api/files/${file.id}`} target="_blank" rel="noreferrer"><span>{file.kind === "pdf" ? "PDF" : "FILE"}</span><strong>{file.filename}</strong><small>{Math.ceil(file.sizeBytes / 1024)} KB</small></a>)}</div>}
           {pdfState && (pdfState.startsWith("PDF ready|") ? <a className="pdf-ready-link" href={pdfState.split("|")[1]} target="_blank" rel="noreferrer">PDF ready, download now</a> : <p className="pdf-state">{pdfState}</p>)}
 
-          <footer className="proposal-design-footer"><button className="button secondary" onClick={() => setBuilderStep("commercial")}>← Back to commercial setup</button><span>Step 2 of 3 · {proposalPages.length} pages</span><div><button className="button secondary" onClick={() => saveQuote("Draft")} disabled={saving !== null || locked}>{saving === "Draft" ? "Saving…" : "Save draft"}</button><button className="button primary" disabled={!priced} onClick={() => priced && setPreview(true)}>Review proposal →</button></div></footer>
+          <footer className="proposal-design-footer"><button className="button secondary" onClick={() => setBuilderStep("commercial")}>← Back to commercial setup</button><span>Step 2 of 3 · {proposalPages.length} pages</span><div><button className="button secondary" onClick={() => saveQuote("Draft")} disabled={saving !== null || locked}>{saving === "Draft" ? "Saving…" : "Save draft"}</button><button className="button primary" onClick={() => setBuilderStep("review")}>Review proposal →</button></div></footer>
+        </section>
+      ) : (
+        <section className="review-issue-page">
+          <header className="review-issue-header">
+            <div><p className="eyebrow">Final review</p><h2>Validate and issue the proposal</h2><p>Review the exact client document, resolve readiness exceptions and control the transition from draft to issued commercial record.</p></div>
+            <div><span className={`review-readiness-score ${readyToSubmit ? "complete" : "attention"}`}><strong>{completedReadiness}/{reviewReadiness.length}</strong><small>Checks complete</small></span><button className="button secondary" disabled={!priced} onClick={() => priced && setPreview(true)}>Full-screen preview</button></div>
+          </header>
+
+          <div className="review-issue-grid">
+            <section className="review-preview-card">
+              <header><div><span className="review-live-dot"/><strong>Client document preview</strong><small>Responsive web proposal</small></div><span>{proposalPages.length} pages · {quoteCurrency}</span></header>
+              <div className="review-document-frame">
+                {priced ? <ProposalDocument quote={priced} clientName={clientName} reference={reference} title={proposalTitle} introduction={proposalIntroduction} scopeHeading={scopeHeading} brandName={brandName} brandInitials={brandInitials} validUntil={validUntil} pages={proposalPages} options={proposalOptions} compact /> : <div className="review-preview-empty"><span>!</span><strong>Commercial preview unavailable</strong><p>Return to commercial setup and resolve the pricing-engine exceptions.</p><button className="button secondary" onClick={() => setBuilderStep("commercial")}>Open commercial setup</button></div>}
+              </div>
+            </section>
+
+            <aside className="review-control-column">
+              <section className="review-control-card readiness-card">
+                <header><div><p className="eyebrow">Pre-issue controls</p><h3>Readiness assessment</h3></div><span className={readyToSubmit ? "control-status ready" : "control-status attention"}>{readyToSubmit ? "Ready" : "Action required"}</span></header>
+                <div className="readiness-list">{reviewReadiness.map((item) => <button key={item.id} onClick={() => setBuilderStep(item.step)}><span className={item.complete ? "readiness-icon complete" : "readiness-icon"}>{item.complete ? "✓" : "!"}</span><span><strong>{item.label}</strong><small>{item.detail}</small></span><b>{item.complete ? "Complete" : "Review"}</b></button>)}</div>
+                <p className="legal-validation-note"><span aria-hidden="true">§</span>Mandatory legal policies and immutable content versions are revalidated by the server when the quote is marked ready.</p>
+              </section>
+
+              <section className="review-control-card commercial-review-card">
+                <header><div><p className="eyebrow">Commercial snapshot</p><h3>Quote economics</h3></div><span>Rule set v{ruleSet.version}</span></header>
+                <div className="review-metrics"><div><span>One-off</span><strong>{priced ? formatMoney(priced.oneOffSubtotalMinor, priced.currency) : "—"}</strong></div><div><span>Annual recurring</span><strong>{priced ? formatMoney(priced.recurringAnnualisedMinor, priced.currency) : "—"}</strong></div><div><span>Margin</span><strong>{priced?.marginBp === null || priced?.marginBp === undefined ? "Incomplete" : `${(priced.marginBp / 100).toFixed(1)}%`}</strong></div><div><span>Services</span><strong>{lines.length}</strong></div></div>
+              </section>
+
+              <section className="review-control-card lifecycle-card">
+                <header><div><p className="eyebrow">Governed action</p><h3>Approval and issue</h3></div><Status>{lifecycleStatus}</Status></header>
+                {lifecycleStatus === "Draft" && <><p>Marking ready reprices and validates this quote on the server before issue is permitted.</p><div className="review-action-stack"><button className="button secondary" onClick={() => saveQuote("Draft")} disabled={saving !== null}>{saving === "Draft" ? "Saving…" : hasSaved ? "Save latest draft" : "Save draft"}</button><button className="button primary" onClick={() => saveQuote("Ready")} disabled={!readyToSubmit || saving !== null}>{saving === "Ready" ? "Validating…" : "Validate and mark ready"}</button></div></>}
+                {lifecycleStatus === "Ready" && <><p>The validated snapshot is ready for controlled publication to the recipient.</p><button className="button primary full-action" onClick={issueCurrentQuote} disabled={issuing}>{issuing ? "Issuing secure link…" : "Issue secure recipient link"}</button></>}
+                {sharePath && <div className="issued-link-panel"><span>Secure recipient link</span><code>{sharePath}</code><div><button className="button secondary" onClick={() => void copyRecipientLink()}>Copy link</button><a className="button primary" href={sharePath} target="_blank" rel="noreferrer">Open recipient view</a></div></div>}
+                {["Issued", "Viewed"].includes(lifecycleStatus) && <button className="text-button offline-action" onClick={acceptOffline}>Record evidenced offline acceptance</button>}
+                {locked && lifecycleStatus !== "Accepted" && <button className="button secondary full-action" onClick={createRevision} disabled={revising}>{revising ? "Creating revision…" : "Create editable revision"}</button>}
+                {lifecycleStatus === "Accepted" && <div className="accepted-state"><span>✓</span><div><strong>Proposal accepted</strong><p>The accepted snapshot is immutable and its evidence certificate is available.</p><a className="button secondary" href={`/api/quotes/${encodeURIComponent(reference)}/certificate`} target="_blank" rel="noreferrer">Download acceptance certificate</a></div></div>}
+              </section>
+
+              <section className="review-control-card output-card">
+                <header><div><p className="eyebrow">Controlled output</p><h3>Files and PDF</h3></div><span>{quoteFiles.length} files</span></header>
+                <p>Supporting files and generated PDFs are bound to this quote version.</p>
+                <div className="output-actions"><label aria-disabled={!hasSaved || uploading} className={`button secondary upload-button ${hasSaved && !uploading ? "" : "disabled-upload"}`}>{uploading ? "Uploading…" : "Attach file"}<input type="file" disabled={!hasSaved || uploading} accept=".pdf,.png,.jpg,.jpeg,.txt" onChange={(event) => void uploadAttachment(event.target.files?.[0])}/></label><button className="button secondary" disabled={!hasSaved || pdfBusy} onClick={requestPdf}>{pdfBusy ? "Generating…" : "Generate PDF"}</button></div>
+                {pdfState && (pdfState.startsWith("PDF ready|") ? <a className="pdf-ready-link" href={pdfState.split("|")[1]} target="_blank" rel="noreferrer">Download generated PDF</a> : <p className="pdf-state">{pdfState}</p>)}
+              </section>
+            </aside>
+          </div>
+
+          <footer className="review-issue-footer"><button className="button secondary" onClick={() => setBuilderStep("proposal")}>← Back to proposal design</button><span>Step 3 of 3 · {lifecycleStatus}</span><button className="button secondary" onClick={() => setBuilderStep("commercial")}>Review commercial setup</button></footer>
         </section>
       )}
     </div>
@@ -705,17 +793,26 @@ function QuoteSummary({ quote, reference, ruleSetVersion, errors, discount, setD
 
 function PreviewBlock({block,quote,recurring,options}:{block:DocumentPage["blocks"][number];quote:PricedQuote;recurring:Array<[Frequency,number]>;options:Array<{id:string;label:string}>}){if(block.enabled===false)return null;const heading=<>{block.eyebrow&&<p className="eyebrow">{block.eyebrow}</p>}{block.title&&<h2>{block.title}</h2>}</>;if(block.type==="spacer")return <div className="recipient-spacer"/>;if(block.type==="pricing_table")return <div className="recipient-content-block">{heading}{block.display!=="totals"&&<section className="document-scope service-schedule-scope">{quote.lines.map(line=><div className="proposal-service-line" key={line.lineId}><div><span><strong>{line.itemName}</strong><small>{line.quantity} {line.unitLabel}</small></span><strong>{formatMoney(line.finalPriceMinor,quote.currency)}</strong></div>{(line.description||line.serviceSchedule||line.serviceTerms)&&<section>{line.description&&<p>{line.description}</p>}{line.serviceSchedule&&<div><strong>Service schedule</strong><p>{line.serviceSchedule}</p></div>}{line.serviceTerms&&<div><strong>Service terms</strong><p>{line.serviceTerms}</p></div>}</section>}</div>)}</section>}{block.display!=="lines"&&<section className="document-totals"><div><small>ONE-OFF INVESTMENT</small><strong>{formatMoney(quote.oneOffSubtotalMinor,quote.currency)}</strong></div>{recurring.map(([frequency,amount])=><div key={frequency}><small>{labels[frequency].toUpperCase()} RECURRING</small><strong>{formatMoney(amount)}</strong></div>)}</section>}</div>;if(["feature_grid","timeline","team","faq"].includes(block.type))return <div className="recipient-content-block">{heading}<div className="recipient-items" style={{"--columns":String(block.columns??3)} as CSSProperties}>{(block.items??[]).map(item=><div key={item.id}><strong>{item.title}</strong><p>{item.content}</p></div>)}</div></div>;if(block.type==="image")return <div className="recipient-content-block">{heading}{block.fileId&&<img className="recipient-media" src={`/api/files/${block.fileId}`} alt={block.title??"Proposal image"}/>}</div>;if(block.type==="options")return <div className="recipient-content-block">{heading}<div className="recipient-items">{options.map(option=><div key={option.id}><strong>{option.label}</strong></div>)}</div></div>;return <div className={`recipient-content-block ${block.type==="callout"?"recipient-callout":""}`}>{heading}{block.content&&<p>{block.content}</p>}</div>}
 
-function QuotePreview({ quote, clientName, reference, title, introduction, scopeHeading, brandName, brandInitials, pages, options, onBack }: { quote: PricedQuote; clientName: string; reference: string; title: string; introduction: string; scopeHeading: string; brandName: string; brandInitials: string; pages:DocumentPage[];options:Array<{id:string;label:string}>; onBack: () => void }) {
+type ProposalDocumentProps = { quote:PricedQuote; clientName:string; reference:string; title:string; introduction:string; scopeHeading:string; brandName:string; brandInitials:string; validUntil:string; pages:DocumentPage[]; options:Array<{id:string;label:string}>; compact?:boolean };
+
+function ProposalDocument({ quote, clientName, reference, title, introduction, scopeHeading, brandName, brandInitials, validUntil, pages, options, compact=false }:ProposalDocumentProps) {
   const recurring = (Object.entries(quote.recurringByFrequency) as Array<[Frequency, number]>).filter(([frequency, amount]) => frequency !== "one_off" && amount > 0);
+  const validity = validUntil ? new Date(`${validUntil}T12:00:00Z`).toLocaleDateString("en-GB", { day:"numeric", month:"long", year:"numeric" }) : "Not set";
   return (
-    <div className="preview-shell">
-      <div className="preview-toolbar"><button className="button secondary" onClick={onBack}>← Back to builder</button><span>Client preview · responsive web document</span><button className="button primary" onClick={() => window.print()}>Print or save PDF</button></div>
-      <article className="client-document">
-        <header><span className="client-logo">{brandInitials || "FAP"}</span><div><small>PROPOSAL {reference}</small><h1>{title}</h1><p>Prepared for {clientName}</p></div></header>
+      <article className={`client-document horizon-client-document ${compact ? "compact-document" : ""}`}>
+        <header><span className="client-logo">{brandInitials || "QB"}</span><div><small>PROPOSAL · {reference}</small><h1>{title}</h1><p>Prepared for {clientName}</p></div><div className="document-hero-meta"><span>Valid until</span><strong>{validity}</strong><span>Currency</span><strong>{quote.currency}</strong></div></header>
         {pages.length?pages.map(page=><section className={`recipient-page page-${page.format} background-${page.background}`} key={page.id}>{page.blocks.map(block=><PreviewBlock key={block.id} block={block} quote={quote} recurring={recurring} options={options}/>)}</section>):<><section className="document-intro"><p className="eyebrow">Our proposal</p><h2>Clarity from scope to commitment.</h2><p>{introduction}</p></section><section className="document-scope"><p className="eyebrow">Scope and investment</p><h2>{scopeHeading}</h2>{quote.lines.map((line) => <div key={line.lineId}><span><strong>{line.itemName}</strong><small>{line.quantity} {line.unitLabel}{line.quantity === 1 ? "" : "s"}</small></span><strong>{formatMoney(line.finalPriceMinor,quote.currency)}</strong></div>)}</section><section className="document-totals"><div><small>ONE-OFF INVESTMENT</small><strong>{formatMoney(quote.oneOffSubtotalMinor,quote.currency)}</strong></div>{recurring.map(([frequency, amount]) => <div key={frequency}><small>{labels[frequency].toUpperCase()} RECURRING</small><strong>{formatMoney(amount)}</strong></div>)}</section></>}
-        <section className="document-accept"><div><p className="eyebrow">Next step</p><h2>Ready to proceed?</h2><p>The formal acceptance workflow will record the selected option, full name and timestamp.</p></div><button>Accept proposal</button></section>
-        <footer><span>{brandName}</span><span>Valid until 14 September 2026</span><span>Private and confidential</span></footer>
+        <section className="document-accept"><div><p className="eyebrow">Formal acceptance</p><h2>Ready to proceed?</h2><p>The secure acceptance workflow records the selected option, authorised signatory and verification evidence.</p></div><button disabled>Accept proposal</button></section>
+        <footer><span>{brandName}</span><span>Valid until {validity}</span><span>Private and confidential</span></footer>
       </article>
+  );
+}
+
+function QuotePreview(props: ProposalDocumentProps & { onBack: () => void }) {
+  return (
+    <div className="preview-shell horizon-preview-shell">
+      <div className="preview-toolbar horizon-preview-toolbar"><button className="button secondary" onClick={props.onBack}>← Back to review</button><span><i className="review-live-dot"/>Client experience preview</span><button className="button primary" onClick={() => window.print()}>Print or save PDF</button></div>
+      <ProposalDocument {...props} />
     </div>
   );
 }
