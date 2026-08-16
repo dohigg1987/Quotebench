@@ -868,11 +868,12 @@ body { background:var(--canvas); color:var(--ink); font-family:Inter,ui-sans-ser
 .line-row { min-width:680px; }
 .question-grid { grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); }
 .quote-summary { position:sticky; top:84px; min-width:0; max-height:calc(100vh - 104px); overflow:auto; padding:0; border:1px solid #d5dee8; border-radius:10px; background:#fff; color:var(--ink); box-shadow:var(--shadow); }
-.quote-summary > * { margin-left:20px; margin-right:20px; }
 .quote-summary .summary-kicker { min-height:48px; margin:0; padding:0 20px; border-bottom:1px solid var(--line); border-radius:10px 10px 0 0; background:#f7f9fc; color:#64748b; }
 .summary-kicker b { color:#1f6f5f; }
 .summary-kicker b::before { background:#22a06b; box-shadow:0 0 0 3px rgba(34,160,107,.12); }
-.quote-summary h2 { margin-top:20px; font-size:18px; }
+.quote-summary-body { min-width:0; padding:20px; }
+.quote-summary-heading { margin:0 0 20px; }
+.quote-summary h2 { margin:0; font-size:18px; line-height:1.3; }
 .summary-reference { color:#718096; }
 .summary-lines { border-top:1px solid var(--line); }
 .summary-lines > div { border-bottom:1px solid var(--soft-line); color:#283548; }
@@ -885,7 +886,7 @@ body { background:var(--canvas); color:var(--ink); font-family:Inter,ui-sans-ser
 .totals .annualised { border-top:1px solid var(--line); color:#1f5f95; }
 .health-row { background:#eef7f2; border-color:#cae6d7; color:#225c47; }
 .health-dot { background:#22a06b; }
-.preview-button { width:calc(100% - 40px); margin:10px 20px 20px; background:#1f4f83; color:#fff; }
+.preview-button { width:100%; margin:10px 0 0; background:#1f4f83; color:#fff; }
 .quote-summary .error-panel { color:#9f3127; background:#fff1ef; border-color:#f2c8c3; }
 .integration-grid,.document-admin-grid,.billing-grid,.delivery-grid,.integration-admin-grid { min-width:0; }
 .catalogue-editor { min-width:0; }
@@ -944,6 +945,140 @@ body { background:var(--canvas); color:var(--ink); font-family:Inter,ui-sans-ser
   .panel-toolbar { align-items:flex-start; flex-direction:column; }
   .top-actions .top-icon { display:none; }
   .share-panel { grid-template-columns:1fr; }
+}
+
+/* Horizon UI boilerplate foundation
+   Adapted from Horizon UI's open-source React/Next.js design conventions. */
+:root {
+  --ink:#1b2559;
+  --muted:#707eae;
+  --line:#e2e8f0;
+  --soft-line:#edf2f7;
+  --paper:#fff;
+  --canvas:#f4f7fe;
+  --navy:#4318ff;
+  --navy-deep:#111c44;
+  --teal:#4318ff;
+  --teal-soft:#f0edff;
+  --accent:#4318ff;
+  --horizon-brand:#4318ff;
+  --horizon-brand-soft:#f0edff;
+  --horizon-navy:#1b2559;
+  --horizon-canvas:#f4f7fe;
+  --horizon-radius:20px;
+  --shadow:0 18px 40px rgba(112,144,176,.12);
+}
+html,body { background:var(--horizon-canvas); color:var(--horizon-navy); }
+.sidebar { background:#fff; color:var(--horizon-navy); border-right:0; box-shadow:8px 0 28px rgba(112,144,176,.08); }
+.sidebar-brand-row { border-bottom:1px solid #edf2f7; }
+.brand { color:var(--horizon-navy); }
+.brand-mark { border-radius:10px; background:var(--horizon-brand); color:#fff; font-family:inherit; }
+.nav-group-trigger { color:#a0aec0; }
+.nav-group-trigger b { color:#a0aec0; }
+.nav-item { border-radius:10px; color:#707eae; font-weight:600; }
+.nav-item:hover { background:#f7f9ff; color:var(--horizon-navy); }
+.nav-item.active { background:var(--horizon-brand-soft); color:var(--horizon-brand); box-shadow:inset 3px 0 var(--horizon-brand); }
+.nav-dot { background:#cbd5e1; }
+.nav-item.active .nav-dot { background:var(--horizon-brand); box-shadow:0 0 0 3px rgba(67,24,255,.1); }
+.sidebar-foot { background:#fff; border-top:1px solid #edf2f7; }
+.sidebar-foot > p,.workspace-person small { color:#a0aec0; }
+.sidebar-foot > p strong,.workspace-person { color:var(--horizon-navy); }
+.usage-bar { background:#edf2f7; }
+.usage-bar span { background:var(--horizon-brand); }
+.avatar { background:var(--horizon-brand-soft); color:var(--horizon-brand); }
+.topbar { background:rgba(244,247,254,.88); border-bottom:0; backdrop-filter:blur(16px); }
+.workspace-switcher { padding:7px 10px; border:1px solid rgba(226,232,240,.9); border-radius:12px; background:rgba(255,255,255,.92); box-shadow:0 6px 20px rgba(112,144,176,.08); }
+.workspace-dot { border-radius:8px; background:var(--horizon-brand-soft); color:var(--horizon-brand); }
+.top-icon,.help-link { border-radius:10px; background:#fff; box-shadow:0 4px 16px rgba(112,144,176,.08); }
+.page-heading h1 { color:var(--horizon-navy); font-weight:700; }
+.eyebrow { color:#a0aec0; }
+.page-subtitle { color:#707eae; line-height:1.55; }
+.button { min-height:40px; border-radius:10px; }
+.button.primary { background:var(--horizon-brand); box-shadow:0 8px 18px rgba(67,24,255,.2); }
+.button.primary:hover:not(:disabled) { background:#3311db; }
+.button.secondary,.button:not(.primary) { border-color:#e2e8f0; background:#fff; color:var(--horizon-navy); }
+.button.secondary:hover:not(:disabled),.button:not(.primary):hover:not(:disabled) { background:#f8f9ff; border-color:#cbd5e1; }
+.data-panel,.catalogue-editor,.builder-workspace,.usage-card,.attention-panel,.industry-card,.quote-summary { border:0; border-radius:var(--horizon-radius); background:#fff; box-shadow:var(--shadow); }
+.panel-toolbar { border-bottom:1px solid #edf2f7; border-radius:var(--horizon-radius) var(--horizon-radius) 0 0; background:#fff; }
+.field-grid input,.field-grid select,.panel-toolbar input,.editor-grid input,.editor-grid select,.document-fields input,.document-fields select,.catalogue-editor input,.catalogue-editor select,.catalogue-editor textarea { min-height:42px; border:1px solid #e2e8f0; border-radius:10px; background:#fff; color:var(--horizon-navy); }
+.field-grid input:focus,.field-grid select:focus,.panel-toolbar input:focus,.document-fields input:focus,.document-fields select:focus,.catalogue-editor input:focus,.catalogue-editor select:focus,.catalogue-editor textarea:focus { outline:0; border-color:#9b87ff; box-shadow:0 0 0 3px rgba(67,24,255,.11); }
+.quote-summary { border:0; border-radius:var(--horizon-radius); }
+.quote-summary .summary-kicker { border-bottom:1px solid #edf2f7; border-radius:var(--horizon-radius) var(--horizon-radius) 0 0; background:#fbfcff; }
+.summary-kicker b,.discount-control > span b { color:var(--horizon-brand); }
+.summary-kicker b::before { background:var(--horizon-brand); box-shadow:0 0 0 4px rgba(67,24,255,.1); }
+.totals > div strong { color:var(--horizon-navy); }
+.button.preview-button { background:var(--horizon-brand); border-color:var(--horizon-brand); color:#fff; }
+.button.preview-button:hover:not(:disabled) { background:#3311db; border-color:#3311db; }
+.discount-control input { accent-color:var(--horizon-brand); }
+
+/* Engagement governance, rebuilt on the Horizon card and form rhythm. */
+.engagement-page { max-width:1600px; }
+.engagement-layout { display:grid; grid-template-columns:minmax(560px,1.1fr) minmax(360px,.9fr); gap:24px; align-items:start; }
+.engagement-card { min-width:0; overflow:hidden; border-radius:var(--horizon-radius); background:#fff; box-shadow:var(--shadow); }
+.engagement-card-header { min-height:104px; padding:24px 26px; display:flex; align-items:flex-start; justify-content:space-between; gap:20px; border-bottom:1px solid #edf2f7; }
+.engagement-card-header h2 { margin:0; color:var(--horizon-navy); font-size:20px; line-height:1.3; letter-spacing:-.02em; }
+.engagement-card-header p:not(.eyebrow) { margin:7px 0 0; color:#707eae; font-size:12px; line-height:1.5; }
+.engagement-form-grid { padding:24px 26px 0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
+.engagement-field { min-width:0; display:grid; gap:7px; }
+.engagement-field > span,.proposal-scope legend { color:var(--horizon-navy); font-size:11px; font-weight:700; }
+.engagement-field > small { color:#a0aec0; font-size:10px; line-height:1.45; }
+.engagement-field input,.engagement-field select,.engagement-field textarea { width:100%; min-width:0; border:1px solid #e2e8f0; border-radius:12px; background:#fff; color:var(--horizon-navy); font:inherit; font-size:13px; }
+.engagement-field input,.engagement-field select { height:44px; padding:0 13px; }
+.engagement-field textarea { min-height:250px; padding:14px; line-height:1.6; resize:vertical; }
+.engagement-field input:focus,.engagement-field select:focus,.engagement-field textarea:focus { outline:0; border-color:#9b87ff; box-shadow:0 0 0 3px rgba(67,24,255,.11); }
+.engagement-content-field { margin:22px 26px 0; }
+.engagement-policy-grid { padding:22px 26px 0; display:grid; gap:16px; }
+.policy-card { padding:16px; display:flex; align-items:center; justify-content:space-between; gap:22px; border:1px solid #e8eaf2; border-radius:14px; background:#fafbff; }
+.policy-card > div { min-width:0; display:flex; align-items:flex-start; gap:12px; }
+.policy-card strong,.policy-card small { display:block; }
+.policy-card strong { color:var(--horizon-navy); font-size:12px; }
+.policy-card small { margin-top:4px; color:#707eae; font-size:10px; line-height:1.45; }
+.policy-icon { width:30px; height:30px; flex:0 0 30px; display:grid; place-items:center; border-radius:9px; background:var(--horizon-brand-soft); color:var(--horizon-brand); font-weight:800; }
+.policy-switch { flex:0 0 auto; display:flex; align-items:center; gap:8px; cursor:pointer; }
+.policy-switch input { position:absolute; opacity:0; pointer-events:none; }
+.policy-switch > span { width:36px; height:20px; position:relative; border-radius:999px; background:#cbd5e1; transition:.15s ease; }
+.policy-switch > span::after { content:""; width:14px; height:14px; position:absolute; top:3px; left:3px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(15,23,42,.22); transition:.15s ease; }
+.policy-switch input:checked + span { background:var(--horizon-brand); }
+.policy-switch input:checked + span::after { transform:translateX(16px); }
+.policy-switch input:focus-visible + span { outline:3px solid rgba(67,24,255,.18); outline-offset:2px; }
+.policy-switch b { min-width:51px; color:#707eae; font-size:10px; }
+.proposal-scope { min-width:0; margin:0; padding:15px 16px 16px; border:1px solid #e8eaf2; border-radius:14px; }
+.proposal-scope legend { padding:0 6px; }
+.proposal-scope > p { margin:0 0 12px; color:#707eae; font-size:10px; }
+.proposal-scope-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.proposal-scope-grid label { min-width:0; padding:10px 11px; display:flex; align-items:center; gap:9px; border:1px solid #edf2f7; border-radius:10px; background:#fbfcff; color:var(--horizon-navy); font-size:11px; font-weight:600; cursor:pointer; }
+.proposal-scope-grid input { width:16px; height:16px; flex:0 0 auto; accent-color:var(--horizon-brand); }
+.engagement-actions { margin-top:24px; padding:18px 26px 24px; display:flex; align-items:center; justify-content:space-between; gap:18px; border-top:1px solid #edf2f7; }
+.engagement-actions > small { color:#a0aec0; font-size:10px; line-height:1.45; }
+.engagement-actions > div { flex:0 0 auto; display:flex; gap:9px; }
+.register-heading { align-items:center; }
+.register-count { min-width:82px; padding:12px 14px; display:grid; place-items:center; gap:2px; border-radius:14px; background:var(--horizon-brand-soft); color:var(--horizon-brand); }
+.register-count strong { font-size:20px; }
+.register-count small { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; }
+.engagement-register-card .legal-register { padding:18px; }
+.engagement-register-card .legal-register > button { min-height:70px; padding:14px 16px; border-color:#edf2f7; border-radius:14px; color:var(--horizon-navy); cursor:pointer; }
+.engagement-register-card .legal-register > button:hover { background:#fafbff; border-color:#d8d9ef; }
+.engagement-register-card .legal-register > button.active { border-color:#9b87ff; background:var(--horizon-brand-soft); box-shadow:0 0 0 2px rgba(67,24,255,.08); }
+.engagement-empty-state { min-height:320px; padding:42px 24px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; }
+.engagement-empty-state > span { width:52px; height:52px; margin-bottom:18px; display:grid; place-items:center; border-radius:16px; background:var(--horizon-brand-soft); color:var(--horizon-brand); font-family:Georgia,serif; font-size:26px; }
+.engagement-empty-state strong { color:var(--horizon-navy); font-size:14px; }
+.engagement-empty-state p { max-width:330px; margin:7px 0 18px; color:#707eae; font-size:11px; line-height:1.55; }
+
+@media (max-width: 1260px) {
+  .engagement-layout { grid-template-columns:1fr; }
+  .engagement-register-card { grid-row:1; }
+  .engagement-editor-card { grid-row:2; }
+}
+@media (max-width: 720px) {
+  .engagement-card-header,.engagement-actions { align-items:stretch; flex-direction:column; }
+  .engagement-form-grid,.proposal-scope-grid { grid-template-columns:1fr; }
+  .engagement-form-grid { padding:20px 18px 0; }
+  .engagement-content-field { margin:20px 18px 0; }
+  .engagement-policy-grid { padding:20px 18px 0; }
+  .engagement-actions { padding:16px 18px 20px; }
+  .engagement-actions > div { width:100%; flex-wrap:wrap; }
+  .engagement-actions .button { flex:1 1 auto; }
+  .policy-card { align-items:flex-start; flex-direction:column; }
 }
 
 @media print {
