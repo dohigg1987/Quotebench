@@ -12,7 +12,7 @@ const SIGN_IN_PATH = "/auth/sign-in";
 const SIGN_OUT_PATH = "/auth/sign-out";
 
 export async function getCurrentUser(): Promise<QuoteBenchUser | null> {
-  const auth = getAuth();
+  const auth = await getAuth();
   if (!auth) return null;
 
   const { data: session } = await auth.getSession();
