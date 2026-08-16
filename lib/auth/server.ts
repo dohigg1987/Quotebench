@@ -1,8 +1,8 @@
-import { createNeonAuth, type NeonAuth } from "@neondatabase/auth/next/server";
+import type { NeonAuth } from "@neondatabase/auth/next/server";
 
 let instance: NeonAuth | null | undefined;
 
-export function getAuth(): NeonAuth | null {
+export async function getAuth(): Promise<NeonAuth | null> {
   if (instance !== undefined) return instance;
 
   const baseUrl = process.env.NEON_AUTH_BASE_URL?.trim();
@@ -12,6 +12,7 @@ export function getAuth(): NeonAuth | null {
     return instance;
   }
 
+  const { createNeonAuth } = await import("@neondatabase/auth/next/server");
   instance = createNeonAuth({
     baseUrl,
     cookies: {
@@ -23,8 +24,8 @@ export function getAuth(): NeonAuth | null {
   return instance;
 }
 
-export function requireAuthConfiguration(): NeonAuth {
-  const auth = getAuth();
+export async function requireAuthConfiguration(): Promise<NeonAuth> {
+  const auth = await getAuth();
   if (!auth) {
     throw new Error(
       "Neon Auth is not configured. Set NEON_AUTH_BASE_URL and a 32+ character NEON_AUTH_COOKIE_SECRET.",
