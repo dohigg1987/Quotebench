@@ -11,6 +11,9 @@ type PreviewBody = {
   ruleSet?: RuleSet;
   quoteDiscount?: number;
   lines?: Array<{ itemId?: string; quantity?: number; discount?: number }>;
+  currency?: string;
+  regionCode?: string;
+  asOfDate?: string;
 };
 
 export async function POST(request: Request) {
@@ -28,12 +31,14 @@ export async function POST(request: Request) {
     const selectedRuleSet = body.ruleSet ?? rules.published;
     const result = price({
       ruleSet: selectedRuleSet,
-      currency: context.currency,
+      currency: /^[A-Z]{3}$/.test(String(body.currency??context.currency).toUpperCase())?String(body.currency??context.currency).toUpperCase():context.currency,
       role: context.role,
       answers: Object.fromEntries(Object.entries(body.answers ?? {}).filter((entry): entry is [string, string] => typeof entry[1] === "string")),
       lines,
       quoteDiscountBp: money.bp(Number(body.quoteDiscount ?? 0) * 100),
       trace: true,
+      regionCode:String(body.regionCode??"GLOBAL").trim().toUpperCase().slice(0,12),
+      asOfDate:/^\d{4}-\d{2}-\d{2}$/.test(String(body.asOfDate))?String(body.asOfDate):new Date().toISOString().slice(0,10),
     });
     return Response.json(result);
   } catch (error) {

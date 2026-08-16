@@ -7,10 +7,10 @@ export type ProposalType = { id:string; name:string; description:string; active:
 const CATALOGUE_SCHEMA = `CREATE TABLE IF NOT EXISTS catalogue_items (
   tenant_id TEXT NOT NULL,id TEXT NOT NULL,category_id TEXT NOT NULL,subcategory_id TEXT,name TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',service_schedule TEXT NOT NULL DEFAULT '',service_terms TEXT NOT NULL DEFAULT '',
-  unit_label TEXT NOT NULL,pricing_basis TEXT NOT NULL CHECK (pricing_basis IN ('fixed','per_unit','cost_plus')),
+  unit_label TEXT NOT NULL,pricing_basis TEXT NOT NULL CHECK (pricing_basis IN ('fixed','per_unit','cost_plus','retainer','usage')),
   base_price_minor INTEGER,cost_minor INTEGER,target_margin_bp INTEGER,
   recurrence TEXT NOT NULL CHECK (recurrence IN ('one_off','weekly','fortnightly','monthly','quarterly','annually')),
-  min_quantity INTEGER,max_quantity INTEGER,updated_by TEXT NOT NULL,
+  min_quantity INTEGER,max_quantity INTEGER,cpq_json TEXT NOT NULL DEFAULT '{}',updated_by TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`;
 const CATEGORY_SCHEMA = `CREATE TABLE IF NOT EXISTS service_categories (tenant_id TEXT NOT NULL,id TEXT NOT NULL,name TEXT NOT NULL,parent_id TEXT,sort_order INTEGER NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1,updated_by TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`;
 const PROPOSAL_TYPE_SCHEMA = `CREATE TABLE IF NOT EXISTS proposal_types (tenant_id TEXT NOT NULL,id TEXT NOT NULL,name TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',active INTEGER NOT NULL DEFAULT 1,updated_by TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`;
@@ -32,7 +32,7 @@ async function ensureCatalogue(tenantId:string){
     db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS catalogue_item_proposal_types_unique ON catalogue_item_proposal_types (tenant_id,item_id,proposal_type_id)"),
     db.prepare("CREATE INDEX IF NOT EXISTS catalogue_item_proposal_types_type_idx ON catalogue_item_proposal_types (tenant_id,proposal_type_id)"),
   ]);
-  for(const [column,definition] of [["subcategory_id","TEXT"],["description","TEXT NOT NULL DEFAULT ''"],["service_schedule","TEXT NOT NULL DEFAULT ''"],["service_terms","TEXT NOT NULL DEFAULT ''"]] as const){try{await db.prepare(`SELECT ${column} FROM catalogue_items LIMIT 0`).run();}catch{await db.prepare(`ALTER TABLE catalogue_items ADD COLUMN ${column} ${definition}`).run();}}
+  for(const [column,definition] of [["subcategory_id","TEXT"],["description","TEXT NOT NULL DEFAULT ''"],["service_schedule","TEXT NOT NULL DEFAULT ''"],["service_terms","TEXT NOT NULL DEFAULT ''"],["cpq_json","TEXT NOT NULL DEFAULT '{}'"]] as const){try{await db.prepare(`SELECT ${column} FROM catalogue_items LIMIT 0`).run();}catch{await db.prepare(`ALTER TABLE catalogue_items ADD COLUMN ${column} ${definition}`).run();}}
   const categories=[
     ["advisory","Advisory",null,10],["delivery","Delivery",null,20],["technology","Technology",null,30],
     ["strategy","Strategy","advisory",10],["retained-advice","Retained advice","advisory",20],
@@ -64,16 +64,16 @@ export async function listProposalTypes(tenantId:string){const db=await ensureCa
 export async function listCatalogueItems(tenantId:string):Promise<CatalogueItem[]>{
   const db=await ensureCatalogue(tenantId);
   const [items,links]=await Promise.all([
-    db.prepare(`SELECT id,category_id,subcategory_id,name,description,service_schedule,service_terms,unit_label,pricing_basis,base_price_minor,cost_minor,target_margin_bp,recurrence,min_quantity,max_quantity FROM catalogue_items WHERE tenant_id=? ORDER BY category_id,subcategory_id,name`).bind(tenantId).all<Record<string,unknown>>(),
+    db.prepare(`SELECT id,category_id,subcategory_id,name,description,service_schedule,service_terms,unit_label,pricing_basis,base_price_minor,cost_minor,target_margin_bp,recurrence,min_quantity,max_quantity,cpq_json FROM catalogue_items WHERE tenant_id=? ORDER BY category_id,subcategory_id,name`).bind(tenantId).all<Record<string,unknown>>(),
     db.prepare("SELECT item_id,proposal_type_id,default_included FROM catalogue_item_proposal_types WHERE tenant_id=?").bind(tenantId).all<{item_id:string;proposal_type_id:string;default_included:number}>(),
   ]);
-  return items.results.map(row=>{const assigned=links.results.filter(link=>link.item_id===row.id);return{
+  return items.results.map(row=>{const assigned=links.results.filter(link=>link.item_id===row.id);const cpq=JSON.parse(String(row.cpq_json??"{}")) as Partial<CatalogueItem>;return{
     id:String(row.id),categoryId:String(row.category_id),...(row.subcategory_id?{subcategoryId:String(row.subcategory_id)}:{}),name:String(row.name),
     ...(row.description?{description:String(row.description)}:{}),...(row.service_schedule?{serviceSchedule:String(row.service_schedule)}:{}),...(row.service_terms?{serviceTerms:String(row.service_terms)}:{}),
-    unitLabel:String(row.unit_label),pricingBasis:row.pricing_basis as CatalogueItem["pricingBasis"],...(row.base_price_minor===null?{}:{basePriceMinor:Number(row.base_price_minor) as CatalogueItem["basePriceMinor"]}),
+    unitLabel:String(row.unit_label),pricingBasis:cpq.pricingBasis??row.pricing_basis as CatalogueItem["pricingBasis"],...(row.base_price_minor===null?{}:{basePriceMinor:Number(row.base_price_minor) as CatalogueItem["basePriceMinor"]}),
     ...(row.cost_minor===null?{}:{costMinor:Number(row.cost_minor) as CatalogueItem["costMinor"]}),...(row.target_margin_bp===null?{}:{targetMarginBp:Number(row.target_margin_bp) as CatalogueItem["targetMarginBp"]}),
     recurrence:row.recurrence as CatalogueItem["recurrence"],...(row.min_quantity===null?{}:{minQuantity:Number(row.min_quantity)}),...(row.max_quantity===null?{}:{maxQuantity:Number(row.max_quantity)}),
-    proposalTypeIds:assigned.map(link=>link.proposal_type_id),defaultProposalTypeIds:assigned.filter(link=>link.default_included===1).map(link=>link.proposal_type_id),
+    ...cpq,proposalTypeIds:assigned.map(link=>link.proposal_type_id),defaultProposalTypeIds:assigned.filter(link=>link.default_included===1).map(link=>link.proposal_type_id),
   }});
 }
 
@@ -85,8 +85,10 @@ export async function upsertCatalogueItem(tenantId:string,item:CatalogueItem,act
   if(!category||category.parent_id)throw new Error("Select an active top-level category.");
   if(item.subcategoryId){const child=await db.prepare("SELECT parent_id FROM service_categories WHERE tenant_id=? AND id=? AND active=1").bind(tenantId,item.subcategoryId).first<{parent_id:string|null}>();if(!child||child.parent_id!==item.categoryId)throw new Error("Select a subcategory within the chosen category.");}
   for(const typeId of proposalIds){const type=await db.prepare("SELECT 1 AS valid FROM proposal_types WHERE tenant_id=? AND id=? AND active=1").bind(tenantId,typeId).first();if(!type)throw new Error("One or more proposal-type assignments are invalid.");}
+  const cpq={pricingBasis:item.pricingBasis,baseCurrency:item.baseCurrency??"GBP",bundleItemIds:item.bundleItemIds??[],optionalUpgradeItemIds:item.optionalUpgradeItemIds??[],requiredItemIds:item.requiredItemIds??[],incompatibleItemIds:item.incompatibleItemIds??[],volumeTiers:item.volumeTiers??[],regionalPrices:item.regionalPrices??[],taxCode:item.taxCode??"STANDARD",taxRateBp:item.taxRateBp??0,pricesIncludeTax:item.pricesIncludeTax??false,includedUnits:item.includedUnits,overagePriceMinor:item.overagePriceMinor,minimumCommitmentMinor:item.minimumCommitmentMinor,indexation:item.indexation};
+  const storageBasis=item.pricingBasis==="retainer"?"fixed":item.pricingBasis==="usage"?"per_unit":item.pricingBasis;
   await db.batch([
-    db.prepare(`INSERT INTO catalogue_items (tenant_id,id,category_id,subcategory_id,name,description,service_schedule,service_terms,unit_label,pricing_basis,base_price_minor,cost_minor,target_margin_bp,recurrence,min_quantity,max_quantity,updated_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id,id) DO UPDATE SET category_id=excluded.category_id,subcategory_id=excluded.subcategory_id,name=excluded.name,description=excluded.description,service_schedule=excluded.service_schedule,service_terms=excluded.service_terms,unit_label=excluded.unit_label,pricing_basis=excluded.pricing_basis,base_price_minor=excluded.base_price_minor,cost_minor=excluded.cost_minor,target_margin_bp=excluded.target_margin_bp,recurrence=excluded.recurrence,min_quantity=excluded.min_quantity,max_quantity=excluded.max_quantity,updated_by=excluded.updated_by,updated_at=CURRENT_TIMESTAMP`).bind(tenantId,itemId,item.categoryId,item.subcategoryId??null,item.name,item.description??"",item.serviceSchedule??"",item.serviceTerms??"",item.unitLabel,item.pricingBasis,item.basePriceMinor??null,item.costMinor??null,item.targetMarginBp??null,item.recurrence,item.minQuantity??null,item.maxQuantity??null,actorEmail),
+    db.prepare(`INSERT INTO catalogue_items (tenant_id,id,category_id,subcategory_id,name,description,service_schedule,service_terms,unit_label,pricing_basis,base_price_minor,cost_minor,target_margin_bp,recurrence,min_quantity,max_quantity,cpq_json,updated_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id,id) DO UPDATE SET category_id=excluded.category_id,subcategory_id=excluded.subcategory_id,name=excluded.name,description=excluded.description,service_schedule=excluded.service_schedule,service_terms=excluded.service_terms,unit_label=excluded.unit_label,pricing_basis=excluded.pricing_basis,base_price_minor=excluded.base_price_minor,cost_minor=excluded.cost_minor,target_margin_bp=excluded.target_margin_bp,recurrence=excluded.recurrence,min_quantity=excluded.min_quantity,max_quantity=excluded.max_quantity,cpq_json=excluded.cpq_json,updated_by=excluded.updated_by,updated_at=CURRENT_TIMESTAMP`).bind(tenantId,itemId,item.categoryId,item.subcategoryId??null,item.name,item.description??"",item.serviceSchedule??"",item.serviceTerms??"",item.unitLabel,storageBasis,item.basePriceMinor??null,item.costMinor??null,item.targetMarginBp??null,item.recurrence,item.minQuantity??null,item.maxQuantity??null,JSON.stringify(cpq),actorEmail),
     db.prepare("DELETE FROM catalogue_item_proposal_types WHERE tenant_id=? AND item_id=?").bind(tenantId,itemId),
     ...proposalIds.map(typeId=>db.prepare("INSERT INTO catalogue_item_proposal_types (tenant_id,item_id,proposal_type_id,default_included) VALUES (?,?,?,?)").bind(tenantId,itemId,typeId,defaults.has(typeId)?1:0)),
   ]);

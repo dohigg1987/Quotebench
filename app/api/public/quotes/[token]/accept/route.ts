@@ -26,7 +26,7 @@ export async function POST(
       body.selectedOptionId,
       request.headers.get("cf-connecting-ip"),
     );
-    return Response.json({ status: quote.status, acceptedAt: quote.acceptedAt });
+    return Response.json({ status: quote.status, acceptedAt: quote.acceptedAt, signingComplete: quote.signingComplete ?? quote.status === "Accepted", pendingSignatures: quote.pendingSignatures ?? 0 });
   } catch (error) {
     return Response.json(
       { error: error instanceof Error ? error.message : "Acceptance could not be recorded." },

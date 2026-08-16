@@ -3,6 +3,7 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { escapeHtml } from "../db/notification-store.ts";
 import { assertSafeWebhookUrl } from "../db/integration-store.ts";
+import { validateAiEndpoint } from "../db/ai-store.ts";
 
 test("HTML email content is contextually escaped", () => {
   assert.equal(
@@ -24,6 +25,11 @@ test("webhook validation accepts only public HTTPS destinations", () => {
     "https://user:password@example.com/hook",
     "https://example.com:8443/hook",
   ]) assert.throws(() => assertSafeWebhookUrl(value));
+});
+
+test("bring-your-own-AI validation accepts only public HTTPS endpoints", () => {
+  assert.equal(validateAiEndpoint("https://ai.example.com/v1/chat/completions"), "https://ai.example.com/v1/chat/completions");
+  for (const value of ["http://ai.example.com", "https://localhost/v1", "https://127.0.0.1/v1", "https://10.0.0.4/v1", "https://169.254.169.254/v1", "https://192.168.1.2/v1", "https://[::1]/v1", "https://key@example.com/v1", "https://example.com:8443/v1"]) assert.throws(() => validateAiEndpoint(value));
 });
 
 test("unsafe API methods require same-origin browser provenance", async () => {

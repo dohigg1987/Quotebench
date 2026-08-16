@@ -52,7 +52,26 @@ export type Frequency =
   | "monthly"
   | "quarterly"
   | "annually";
-export type PricingBasis = "fixed" | "per_unit" | "cost_plus";
+export type PricingBasis = "fixed" | "per_unit" | "cost_plus" | "retainer" | "usage";
+
+export type VolumeTier = {
+  fromQuantity: number;
+  toQuantity?: number;
+  unitPriceMinor: Minor;
+};
+
+export type RegionalPrice = {
+  regionCode: string;
+  currency: string;
+  unitPriceMinor: Minor;
+};
+
+export type IndexationPolicy = {
+  method: "fixed" | "cpi" | "rpi" | "custom";
+  annualRateBp: BasisPoints;
+  baseDate: string;
+  intervalMonths: number;
+};
 
 export type CatalogueItem = {
   id: string;
@@ -72,6 +91,20 @@ export type CatalogueItem = {
   recurrence: Frequency;
   minQuantity?: number;
   maxQuantity?: number;
+  bundleItemIds?: string[];
+  optionalUpgradeItemIds?: string[];
+  requiredItemIds?: string[];
+  incompatibleItemIds?: string[];
+  volumeTiers?: VolumeTier[];
+  regionalPrices?: RegionalPrice[];
+  baseCurrency?: string;
+  taxCode?: string;
+  taxRateBp?: BasisPoints;
+  pricesIncludeTax?: boolean;
+  includedUnits?: number;
+  overagePriceMinor?: Minor;
+  minimumCommitmentMinor?: Minor;
+  indexation?: IndexationPolicy;
 };
 
 export type QuantityBand = {
@@ -140,6 +173,8 @@ export type PriceRequest = {
   lines: RequestLine[];
   quoteDiscountBp?: BasisPoints;
   trace?: boolean;
+  regionCode?: string;
+  asOfDate?: string;
 };
 
 export type WarningCode =
@@ -150,7 +185,9 @@ export type WarningCode =
   | "pricing.quote_minimum_applied"
   | "pricing.margin_incomplete"
   | "pricing.margin_below_floor"
-  | "pricing.negative_margin";
+  | "pricing.negative_margin"
+  | "pricing.indexation_applied"
+  | "pricing.minimum_commitment_applied";
 
 export type PriceErrorCode =
   | "pricing.invalid_quantity"
@@ -159,7 +196,10 @@ export type PriceErrorCode =
   | "pricing.unpriceable_item"
   | "pricing.discount_cap_exceeded"
   | "pricing.invalid_discount"
-  | "pricing.validation";
+  | "pricing.validation"
+  | "pricing.required_item_missing"
+  | "pricing.bundle_item_missing"
+  | "pricing.incompatible_items";
 
 export type PriceWarning = {
   code: WarningCode;
@@ -209,6 +249,11 @@ export type PricedLine = {
   marginBp: BasisPoints | null;
   warnings: PriceWarning[];
   trace: TraceStep[];
+  taxCode: string;
+  taxRateBp: BasisPoints;
+  taxMinor: Minor;
+  grossPriceMinor: Minor;
+  pricingModel: PricingBasis;
 };
 
 export type PricedQuote = {
@@ -221,6 +266,9 @@ export type PricedQuote = {
   quoteDiscountBp: BasisPoints;
   marginBp: BasisPoints | null;
   warnings: PriceWarning[];
+  taxTotalMinor: Minor;
+  grossOneOffTotalMinor: Minor;
+  grossRecurringByFrequency: Record<Frequency, Minor>;
 };
 
 export type PriceResult =
@@ -260,6 +308,33 @@ function resolvedBand(
   return { band: matching[0], overlap: matching.length > 1 };
 }
 
+function resolvedItemTier(item: CatalogueItem, quantity: number): VolumeTier | undefined {
+  return (item.volumeTiers ?? [])
+    .filter((tier) => quantity >= tier.fromQuantity && (tier.toQuantity === undefined || quantity <= tier.toQuantity))
+    .sort((left, right) => right.fromQuantity - left.fromQuantity)[0];
+}
+
+function regionalPrice(item: CatalogueItem, currency: string, regionCode?: string): RegionalPrice | undefined {
+  const prices = item.regionalPrices ?? [];
+  return prices.find((entry) => entry.currency === currency && entry.regionCode === (regionCode ?? "GLOBAL"))
+    ?? prices.find((entry) => entry.currency === currency && entry.regionCode === "GLOBAL");
+}
+
+function elapsedIndexationCycles(policy: IndexationPolicy | undefined, asOfDate?: string): number {
+  if (!policy || !asOfDate || policy.intervalMonths <= 0) return 0;
+  const base = new Date(`${policy.baseDate}T00:00:00Z`);
+  const asOf = new Date(`${asOfDate}T00:00:00Z`);
+  if (!Number.isFinite(base.getTime()) || !Number.isFinite(asOf.getTime()) || asOf <= base) return 0;
+  const months = (asOf.getUTCFullYear() - base.getUTCFullYear()) * 12 + asOf.getUTCMonth() - base.getUTCMonth();
+  return Math.max(0, Math.floor(months / policy.intervalMonths));
+}
+
+function applyIndexation(value: Minor, policy: IndexationPolicy | undefined, asOfDate?: string): Minor {
+  const cycles = elapsedIndexationCycles(policy, asOfDate);
+  if (!policy || cycles === 0) return value;
+  return money.minor(Math.round(value * Math.pow(1 + policy.annualRateBp / 10_000, cycles)));
+}
+
 function lineMinimum(ruleSet: RuleSet, item: CatalogueItem): MinimumFee | undefined {
   return scopedToItem(ruleSet.minimumFees, item)[0];
 }
@@ -279,6 +354,7 @@ function validate(request: PriceRequest): PriceError[] {
   if (quoteDiscount < 0) {
     errors.push({ code: "pricing.invalid_discount", path: "quoteDiscountBp" });
   }
+  const selectedIds = new Set(request.lines.map((line) => line.item.id));
   for (const line of request.lines) {
     if (!Number.isInteger(line.quantity) || line.quantity <= 0) {
       errors.push({ code: "pricing.invalid_quantity", lineId: line.lineId });
@@ -308,11 +384,23 @@ function validate(request: PriceRequest): PriceError[] {
         detail: `${combinedDiscount}:${cap}`,
       });
     }
+    for (const requiredId of line.item.requiredItemIds ?? []) {
+      if (!selectedIds.has(requiredId)) errors.push({ code: "pricing.required_item_missing", lineId: line.lineId, detail: requiredId });
+    }
+    for (const bundledId of line.item.bundleItemIds ?? []) {
+      if (!selectedIds.has(bundledId)) errors.push({ code: "pricing.bundle_item_missing", lineId: line.lineId, detail: bundledId });
+    }
+    for (const incompatibleId of line.item.incompatibleItemIds ?? []) {
+      if (selectedIds.has(incompatibleId)) errors.push({ code: "pricing.incompatible_items", lineId: line.lineId, detail: incompatibleId });
+    }
   }
   return errors;
 }
 
-function resolveBase(item: CatalogueItem): Minor | PriceError {
+function resolveBase(item: CatalogueItem, request: PriceRequest): Minor | PriceError {
+  const configuredRegionalPrice = regionalPrice(item, request.currency, request.regionCode);
+  if (configuredRegionalPrice) return applyIndexation(configuredRegionalPrice.unitPriceMinor, item.indexation, request.asOfDate);
+  if (request.currency !== (item.baseCurrency ?? "GBP")) return { code: "pricing.unpriceable_item", detail: `${item.id}:${request.currency}:${request.regionCode ?? "GLOBAL"}` };
   if (item.pricingBasis === "cost_plus") {
     if (
       item.costMinor === undefined ||
@@ -327,9 +415,11 @@ function resolveBase(item: CatalogueItem): Minor | PriceError {
         detail: item.id,
       };
     }
-    return money.costPlus(item.costMinor, item.targetMarginBp);
+    return applyIndexation(money.costPlus(item.costMinor, item.targetMarginBp), item.indexation, request.asOfDate);
   }
-  return item.basePriceMinor ?? { code: "pricing.unpriceable_item", detail: item.id };
+  return item.basePriceMinor === undefined
+    ? { code: "pricing.unpriceable_item", detail: item.id }
+    : applyIndexation(item.basePriceMinor, item.indexation, request.asOfDate);
 }
 
 function calculateMargin(finalPrice: Minor, item: CatalogueItem, quantity: number): BasisPoints | null {
@@ -339,13 +429,14 @@ function calculateMargin(finalPrice: Minor, item: CatalogueItem, quantity: numbe
 }
 
 function priceLine(request: PriceRequest, line: RequestLine): PricedLine | PriceError {
-  const base = resolveBase(line.item);
+  const base = resolveBase(line.item, request);
   if (typeof base !== "number") return { ...base, lineId: line.lineId };
 
   const warnings: PriceWarning[] = [];
   const trace: TraceStep[] = [];
   const bandResult = resolvedBand(request.ruleSet, line.item, line.quantity);
-  const effectiveUnit = bandResult.band?.unitPriceMinor ?? base;
+  const itemTier = resolvedItemTier(line.item, line.quantity);
+  const effectiveUnit = applyIndexation(itemTier?.unitPriceMinor ?? bandResult.band?.unitPriceMinor ?? base, line.item.indexation, itemTier || bandResult.band ? request.asOfDate : undefined);
   if (request.ruleSet.quantityBands.some((band) => band.itemId === line.item.id || band.categoryId === line.item.categoryId) && !bandResult.band) {
     warnings.push({ code: "pricing.band_miss", lineId: line.lineId });
   }
@@ -353,12 +444,14 @@ function priceLine(request: PriceRequest, line: RequestLine): PricedLine | Price
     warnings.push({ code: "pricing.band_overlap", lineId: line.lineId });
   }
 
-  let running =
-    line.item.pricingBasis === "fixed"
-      ? effectiveUnit
+  let running = line.item.pricingBasis === "fixed" || line.item.pricingBasis === "retainer"
+    ? effectiveUnit
+    : line.item.pricingBasis === "usage"
+      ? money.add(effectiveUnit, money.multiply(line.item.overagePriceMinor ?? effectiveUnit, Math.max(0, line.quantity - (line.item.includedUnits ?? 0))))
       : money.multiply(effectiveUnit, line.quantity);
   const initial = running;
   trace.push({ label: "Base and quantity", beforeMinor: money.minor(0), afterMinor: running });
+  if (elapsedIndexationCycles(line.item.indexation, request.asOfDate) > 0) warnings.push({ code: "pricing.indexation_applied", lineId: line.lineId, detail: line.item.indexation?.method });
 
   const applied: AppliedModifier[] = [];
   const modifiers = request.ruleSet.modifiers
@@ -413,6 +506,13 @@ function priceLine(request: PriceRequest, line: RequestLine): PricedLine | Price
     trace.push({ label: "Line minimum", beforeMinor: before, afterMinor: running });
   }
 
+  if (line.item.minimumCommitmentMinor !== undefined && running < line.item.minimumCommitmentMinor) {
+    const before = running;
+    running = line.item.minimumCommitmentMinor;
+    warnings.push({ code: "pricing.minimum_commitment_applied", lineId: line.lineId, detail: String(before) });
+    trace.push({ label: "Minimum commitment", beforeMinor: before, afterMinor: running });
+  }
+
   const beforeRounding = running;
   running = money.awayFromZero(running, request.ruleSet.roundingIncrementMinor);
   if (beforeRounding !== running) {
@@ -430,6 +530,12 @@ function priceLine(request: PriceRequest, line: RequestLine): PricedLine | Price
   ) {
     warnings.push({ code: "pricing.margin_below_floor", lineId: line.lineId });
   }
+
+  const taxRate = line.item.taxRateBp ?? money.bp(0);
+  const taxMinor = line.item.pricesIncludeTax
+    ? money.minor(Math.round(running - running * 10_000 / (10_000 + taxRate)))
+    : money.percentage(running, taxRate);
+  const grossPriceMinor = line.item.pricesIncludeTax ? running : money.add(running, taxMinor);
 
   return {
     lineId: line.lineId,
@@ -451,6 +557,11 @@ function priceLine(request: PriceRequest, line: RequestLine): PricedLine | Price
     marginBp,
     warnings,
     trace,
+    taxCode: line.item.taxCode ?? "OUT_OF_SCOPE",
+    taxRateBp: taxRate,
+    taxMinor,
+    grossPriceMinor,
+    pricingModel: line.item.pricingBasis,
   };
 }
 
@@ -471,6 +582,9 @@ export function price(request: PriceRequest): PriceResult {
         quoteDiscountBp: request.quoteDiscountBp ?? money.bp(0),
         marginBp: null,
         warnings: [{ code: "pricing.empty_basket" }],
+        taxTotalMinor: money.minor(0),
+        grossOneOffTotalMinor: money.minor(0),
+        grossRecurringByFrequency: emptyFrequencyTotals(),
       },
     };
   }
@@ -481,15 +595,21 @@ export function price(request: PriceRequest): PriceResult {
 
   const lines = lineResults as PricedLine[];
   const recurringByFrequency = emptyFrequencyTotals();
+  const grossRecurringByFrequency = emptyFrequencyTotals();
   let oneOffSubtotal = money.minor(0);
+  let grossOneOffTotal = money.minor(0);
+  let taxTotal = money.minor(0);
   for (const line of lines) {
+    taxTotal = money.add(taxTotal, line.taxMinor);
     if (line.recurrence === "one_off") {
       oneOffSubtotal = money.add(oneOffSubtotal, line.finalPriceMinor);
+      grossOneOffTotal = money.add(grossOneOffTotal, line.grossPriceMinor);
     } else {
       recurringByFrequency[line.recurrence] = money.add(
         recurringByFrequency[line.recurrence],
         line.finalPriceMinor,
       );
+      grossRecurringByFrequency[line.recurrence] = money.add(grossRecurringByFrequency[line.recurrence], line.grossPriceMinor);
     }
   }
 
@@ -499,6 +619,7 @@ export function price(request: PriceRequest): PriceResult {
       code: "pricing.quote_minimum_applied",
       detail: String(oneOffSubtotal),
     });
+    grossOneOffTotal = money.add(grossOneOffTotal, money.minor(request.ruleSet.quoteMinimumMinor - oneOffSubtotal));
     oneOffSubtotal = request.ruleSet.quoteMinimumMinor;
   }
 
@@ -548,6 +669,9 @@ export function price(request: PriceRequest): PriceResult {
       quoteDiscountBp: request.quoteDiscountBp ?? money.bp(0),
       marginBp,
       warnings,
+      taxTotalMinor: taxTotal,
+      grossOneOffTotalMinor: grossOneOffTotal,
+      grossRecurringByFrequency,
     },
   };
 }

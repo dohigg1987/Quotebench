@@ -1,0 +1,6 @@
+import { getChatGPTUser } from "../../../../chatgpt-auth";
+import { requireWorkspaceContext } from "../../../../../db/workspace-store";
+import { getAcceptanceCertificateData } from "../../../../../db/quote-store";
+import { renderAcceptanceCertificate } from "../../../../../lib/acceptance-certificate";
+export const dynamic = "force-dynamic";
+export async function GET(_request: Request, { params }: { params: Promise<{ reference: string }> }) { const user = await getChatGPTUser(); if (!user) return Response.json({ error: "Sign in with ChatGPT to download acceptance certificates." }, { status: 401 }); try { const context = await requireWorkspaceContext(user, ["owner", "admin", "quoter"]); const { reference } = await params; const bytes = renderAcceptanceCertificate(await getAcceptanceCertificateData(context.tenantId, reference)); return new Response(bytes, { headers: { "content-type": "application/pdf", "content-disposition": `attachment; filename="${reference.replace(/[^A-Za-z0-9_-]/g, "-")}-acceptance-certificate.pdf"`, "cache-control": "private, no-store" } }); } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Certificate could not be generated." }, { status: 409 }); } }
