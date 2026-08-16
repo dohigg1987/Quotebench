@@ -131,3 +131,25 @@ test("Enterprise shell groups navigation and contains the quote layout responsiv
   assert.match(css, /\.line-table \{[^}]*overflow-x:auto/);
   assert.match(css, /@media \(max-width: 1024px\)[\s\S]*transform:translateX\(-105%\)/);
 });
+
+test("Quote summary uses one structural content inset", async () => {
+  const component = await source("app/quote-bench.tsx");
+  const styles = await source("app/globals.css");
+  assert.match(component, /className="summary-kicker"[\s\S]*className="quote-summary-body"[\s\S]*<h2>Quote summary<\/h2>/);
+  assert.match(styles, /\.quote-summary-body\s*\{[^}]*padding:20px/);
+  assert.match(styles, /\.quote-summary h2\s*\{[^}]*margin:0/);
+  assert.doesNotMatch(styles, /\.quote-summary > \*\s*\{/);
+  assert.match(styles, /\.preview-button\s*\{[^}]*width:100%[^}]*margin:10px 0 0/);
+});
+
+test("Horizon UI foundation and governed-content layout are explicit", async () => {
+  const styles = await source("app/globals.css");
+  const engagement = await source("app/engagement-screen.tsx");
+  const notices = await source("THIRD_PARTY_NOTICES.md");
+  for (const token of ["--horizon-brand", "--horizon-navy", "--horizon-canvas", "--horizon-radius"]) assert.match(styles, new RegExp(token));
+  assert.match(styles, /\.engagement-layout\s*\{[^}]*grid-template-columns:minmax\(560px,1\.1fr\) minmax\(360px,\.9fr\)/);
+  assert.match(styles, /@media \(max-width: 1260px\)[\s\S]*\.engagement-layout \{ grid-template-columns:1fr; \}/);
+  for (const element of ["engagement-form-grid", "engagement-content-field", "policy-card", "proposal-scope-grid", "engagement-actions", "engagement-empty-state"]) assert.match(engagement, new RegExp(element));
+  assert.match(notices, /Horizon UI/);
+  assert.match(notices, /MIT License/);
+});
