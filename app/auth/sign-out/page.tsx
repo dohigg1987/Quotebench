@@ -9,8 +9,7 @@ export default function SignOutPage() {
   useEffect(() => {
     const returnTo = new URLSearchParams(window.location.search).get("return_to") || "/";
     const safeReturnTo = returnTo.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/";
-    const authClient = getAuthClient();
-    void authClient.signOut().then(({ error }) => {
+    void getAuthClient().then((authClient) => authClient.signOut()).then(({ error }) => {
       if (error) setFailed(true);
       else window.location.replace(safeReturnTo);
     }).catch(() => setFailed(true));
