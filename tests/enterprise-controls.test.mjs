@@ -205,3 +205,26 @@ test("Proposal page and block mutations preserve selection, identity and governa
   assert.match(editor, /disabled=\{pages\.length>=40\}/);
   assert.match(editor, /disabled=\{page\.blocks\.length>=60\}/);
 });
+
+test("Every application surface participates in the shared fit and reflow contract", async () => {
+  const styles = await source("app/globals.css");
+  const governance = await source("app/governance-screen.tsx");
+  const operator = await source("app/operator-screen.tsx");
+  const catalogue = await source("app/catalogue-screen.tsx");
+  const ai = await source("app/ai-assistance-screen.tsx");
+  const delivery = await source("app/delivery-screen.tsx");
+  const recipient = await source("app/q/[token]/page.tsx");
+  for (const selector of ["governance-row", "economics-grid", "security-event-row", "operator-table", "member-table", "webhook-log"]) assert.match(styles, new RegExp(`\\.${selector}`));
+  assert.match(governance, /security-event-table/);
+  assert.match(governance, /governance-delete-panel/);
+  assert.match(operator, /operator-table/);
+  assert.match(catalogue, /governance-row/);
+  assert.match(ai, /economics-grid/);
+  assert.match(delivery, /signer-editor-row/);
+  assert.match(recipient, /recipient-shell/);
+  assert.match(styles, /@media \(max-width: 1180px\)[\s\S]*\.integration-admin-grid,\.brand-studio-grid \{ grid-template-columns:1fr; \}/);
+  assert.match(styles, /@media \(max-width: 720px\)[\s\S]*\.team-invite-fields,\.economics-grid,[^}]*\.plan-limits \{ grid-template-columns:1fr; \}/);
+  assert.match(styles, /@media \(max-width: 720px\)[\s\S]*\.signer-editor-row \{ min-width:0 !important;[^}]*grid-template-columns:1fr !important/);
+  assert.match(styles, /\.recipient-document \{[^}]*border-radius:20px[^}]*color:var\(--horizon-navy\)/);
+  assert.match(styles, /@media \(max-width: 720px\)[\s\S]*\.recipient-accept \{ grid-template-columns:1fr;/);
+});
