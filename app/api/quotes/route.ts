@@ -6,6 +6,7 @@ import { getRuleWorkspace } from "../../../db/pricing-rule-store";
 import { listClients, upsertClient } from "../../../db/client-store";
 import { requireWorkspaceContext } from "../../../db/workspace-store";
 import { normaliseProposalPages, type DocumentPage } from "../../../db/document-store";
+import { resolveLegalContent } from "../../../db/engagement-store";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,9 @@ type SaveQuoteBody = {
   answers?: Record<string, string>;
   quoteDiscount?: number;
   lines?: Array<{ itemId?: string; quantity?: number; discount?: number }>;
+  currency?: string;
+  regionCode?: string;
+  asOfDate?: string;
   document?: { title?: string; introduction?: string; scopeHeading?: string; brandName?: string; brandInitials?: string; proposalTypeId?:string; depositMinor?:number; options?:Array<{id:string;label:string}>; pages?:DocumentPage[] };
 };
 
@@ -67,6 +71,10 @@ export async function POST(request: Request) {
     }
     const tenantId = member.tenantId;
     await assertQuoteCapacity(tenantId, reference);
+    const legal = await resolveLegalContent(tenantId, body.document?.proposalTypeId?.trim());
+    if (status === "Ready" && legal.missingMandatory.length) {
+      return Response.json({ error: "Mandatory legal policies require a published version before this proposal can be marked ready." }, { status: 422 });
+    }
     const document = {
       title: body.document?.title?.trim() || "Transformation delivery partnership",
       introduction: body.document?.introduction?.trim() || "This proposal combines focused strategy, delivery capacity and an ongoing advisory relationship.",
@@ -77,6 +85,7 @@ export async function POST(request: Request) {
       depositMinor: Math.max(0,Math.round(Number(body.document?.depositMinor??0))),
       options:(body.document?.options??[]).slice(0,12).map(option=>({id:String(option.id||crypto.randomUUID()),label:String(option.label??"").trim().slice(0,160)})).filter(option=>option.label),
       pages:normaliseProposalPages(body.document?.pages),
+      legalContent: legal.snapshots,
     };
 
     const [catalogueItems, rules] = await Promise.all([listCatalogueItems(tenantId), getRuleWorkspace(tenantId)]);
@@ -97,12 +106,14 @@ export async function POST(request: Request) {
     });
     const priced = price({
       ruleSet: rules.published,
-      currency: member.currency,
+      currency: /^[A-Z]{3}$/.test(String(body.currency??member.currency).toUpperCase())?String(body.currency??member.currency).toUpperCase():member.currency,
       role: member.role,
       answers,
       lines,
       quoteDiscountBp: money.bp(quoteDiscount * 100),
       trace: true,
+      regionCode:String(body.regionCode??"GLOBAL").trim().toUpperCase().slice(0,12),
+      asOfDate:/^\d{4}-\d{2}-\d{2}$/.test(String(body.asOfDate))?String(body.asOfDate):new Date().toISOString().slice(0,10),
     });
 
     if (!priced.ok) {
@@ -127,7 +138,7 @@ export async function POST(request: Request) {
       recurringAnnualisedMinor: priced.quote.recurringAnnualisedMinor,
       marginBp: priced.quote.marginBp,
       lineItemsJson: JSON.stringify(body.lines ?? []),
-      answersJson: JSON.stringify({ values: body.answers ?? {}, quoteDiscount }),
+      answersJson: JSON.stringify({ values: body.answers ?? {}, quoteDiscount, regionCode:String(body.regionCode??"GLOBAL").toUpperCase(), asOfDate:String(body.asOfDate??new Date().toISOString().slice(0,10)) }),
       pricingSnapshotJson: JSON.stringify(priced.quote),
       documentJson: JSON.stringify(document),
       ruleSetId: rules.published.id,

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderProposalPdf } from "../lib/proposal-pdf.ts";
+import { renderAcceptanceCertificate } from "../lib/acceptance-certificate.ts";
 
 test("proposal PDF preserves authored pages, pricing and long schedules", () => {
   const marker = "UNIQUE_END_MARKER";
@@ -39,4 +40,13 @@ test("proposal PDF preserves authored pages, pricing and long schedules", () => 
   assert.match(pdf, new RegExp(marker));
   assert.match(pdf, /\/MediaBox \[0 0 842 595\]/);
   assert.doesNotMatch(pdf, /slice\(0, 110\)/);
+});
+
+test("acceptance certificate includes signing workflow and verification hash", () => {
+  const bytes = renderAcceptanceCertificate({ reference: "QB-9002", clientName: "Example Client", acceptedAt: "2026-08-16T12:00:00Z", acceptedBy: "Alex Example, Pat Counter", snapshot: { evidence: { certificateId: "certificate-123", quoteSnapshotHash: "abc123", ruleSetVersion: 7, consent: "Accepted" } }, signers: [{ name: "Alex Example", email: "alex@example.com", role: "signatory", signingOrder: 1, signedAt: "2026-08-16T11:00:00Z" }, { name: "Pat Counter", email: "pat@example.com", role: "countersignatory", signingOrder: 2, signedAt: "2026-08-16T12:00:00Z" }] });
+  const pdf = new TextDecoder().decode(bytes);
+  assert.match(pdf, /^%PDF-1\.4/);
+  assert.match(pdf, /ACCEPTANCE CERTIFICATE/);
+  assert.match(pdf, /Pat Counter/);
+  assert.match(pdf, /abc123/);
 });

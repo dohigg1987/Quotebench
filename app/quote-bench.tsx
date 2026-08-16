@@ -23,10 +23,12 @@ import OperatorScreen from "./operator-screen";
 import GovernanceScreen from "./governance-screen";
 import ProposalEditor from "./proposal-editor";
 import CatalogueScreen from "./catalogue-screen";
+import EngagementScreen from "./engagement-screen";
+import AiAssistanceScreen from "./ai-assistance-screen";
 import type { DocumentPage, DocumentTemplate } from "../db/document-store";
 import type { ProposalType, ServiceCategory } from "../db/catalogue-store";
 
-type Screen = "builder" | "quotes" | "clients" | "catalogue" | "rules" | "activity" | "integrations" | "team" | "usage" | "documents" | "delivery" | "templates" | "billing" | "governance" | "operator";
+type Screen = "builder" | "quotes" | "clients" | "catalogue" | "rules" | "activity" | "integrations" | "team" | "usage" | "documents" | "delivery" | "templates" | "billing" | "governance" | "engagement" | "ai" | "operator";
 type Workspace = { id:string; name:string; currency:string; role:"owner"|"admin"|"quoter" };
 type SelectedLine = { itemId: string; quantity: number; discount: number };
 type ClientRecord = {
@@ -66,7 +68,7 @@ type SavedQuote = {
 };
 type EditableQuote = SavedQuote & {
   lines: SelectedLine[];
-  answers: { values?: Record<string, string>; complexity?: string; turnaround?: string; quoteDiscount?: number };
+  answers: { values?: Record<string, string>; complexity?: string; turnaround?: string; quoteDiscount?: number; regionCode?:string; asOfDate?:string };
   document: { title: string; introduction: string; scopeHeading: string; brandName?: string; brandInitials?: string; proposalTypeId?:string; depositMinor?: number; options?: Array<{ id: string; label: string }>; pages?:DocumentPage[] };
   revisionOf: string | null;
 };
@@ -113,6 +115,8 @@ function Sidebar({ screen, setScreen, currentUser, entitlement }: { screen: Scre
     { key: "rules", label: "Pricing rules", mark: "R" },
     { key: "documents", label: "Documents & brand", mark: "D" },
     { key: "templates", label: "Templates & setup", mark: "P" },
+    { key: "engagement", label: "Engagement governance", mark: "E" },
+    { key: "ai", label: "AI assistance", mark: "AI" },
     { key: "activity", label: "Activity", mark: "A" },
     { key: "delivery", label: "Send & track", mark: "S" },
     { key: "integrations", label: "Imports & exports", mark: "I" },
@@ -182,6 +186,9 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
   const [contactName, setContactName] = useState(initialQuote?.contactName ?? "Maya Patel");
   const [contactEmail, setContactEmail] = useState(initialQuote?.contactEmail ?? "maya.patel@stellargrid.example");
   const [validUntil, setValidUntil] = useState(initialQuote?.validUntil ?? "2026-09-14");
+  const [quoteCurrency,setQuoteCurrency]=useState(initialQuote?.currency??"GBP");
+  const [regionCode,setRegionCode]=useState(initialQuote?.answers.regionCode??"GLOBAL");
+  const [asOfDate,setAsOfDate]=useState(initialQuote?.answers.asOfDate??new Date().toISOString().slice(0,10));
   const [proposalTitle, setProposalTitle] = useState(initialQuote?.document.title ?? "Transformation delivery partnership");
   const [proposalIntroduction] = useState(initialQuote?.document.introduction ?? "This proposal combines focused strategy, delivery capacity and an ongoing advisory relationship. Every commercial value is derived from the published QuoteBench rule set and recorded with its calculation trace.");
   const [scopeHeading] = useState(initialQuote?.document.scopeHeading ?? "A practical route to measurable change");
@@ -229,7 +236,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
       fetch("/api/pricing", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ answers, quoteDiscount, lines }),
+        body: JSON.stringify({ answers, quoteDiscount, lines, currency:quoteCurrency, regionCode, asOfDate }),
         signal: controller.signal,
       })
         .then(async (response) => {
@@ -253,7 +260,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [answers, catalogueItems, lines, quoteDiscount, ruleSet.version]);
+  }, [answers, asOfDate, catalogueItems, lines, quoteCurrency, quoteDiscount, regionCode, ruleSet.version]);
 
   useEffect(() => {
     if (!hasSaved || locked || !clientName.trim() || !contactName.trim() || !contactEmail.trim() || !validUntil) return;
@@ -263,7 +270,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
       fetch("/api/quotes", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ reference, clientId, clientName, contactName, contactEmail, validUntil, status: lifecycleStatus === "Ready" ? "Ready" : "Draft", answers, quoteDiscount, lines, document: { title: proposalTitle, introduction: proposalIntroduction, scopeHeading, brandName, brandInitials, proposalTypeId, depositMinor: Math.max(0, Math.round(Number(deposit || 0) * 100)), options: proposalOptions.filter((option) => option.label.trim()), pages:proposalPages } }),
+        body: JSON.stringify({ reference, clientId, clientName, contactName, contactEmail, validUntil, status: lifecycleStatus === "Ready" ? "Ready" : "Draft", answers, quoteDiscount, lines, currency:quoteCurrency,regionCode,asOfDate, document: { title: proposalTitle, introduction: proposalIntroduction, scopeHeading, brandName, brandInitials, proposalTypeId, depositMinor: Math.max(0, Math.round(Number(deposit || 0) * 100)), options: proposalOptions.filter((option) => option.label.trim()), pages:proposalPages } }),
         signal: controller.signal,
       })
         .then((response) => {
@@ -279,18 +286,19 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [answers, brandInitials, brandName, clientId, clientName, contactEmail, contactName, deposit, hasSaved, lifecycleStatus, lines, locked, proposalIntroduction, proposalOptions, proposalPages, proposalTitle, proposalTypeId, quoteDiscount, reference, scopeHeading, validUntil]);
+  }, [answers, asOfDate, brandInitials, brandName, clientId, clientName, contactEmail, contactName, deposit, hasSaved, lifecycleStatus, lines, locked, proposalIntroduction, proposalOptions, proposalPages, proposalTitle, proposalTypeId, quoteCurrency, quoteDiscount, reference, regionCode, scopeHeading, validUntil]);
 
   function updateQuantity(itemId: string, value: number) {
     setLines((current) => current.map((line) => line.itemId === itemId ? { ...line, quantity: value } : line));
   }
 
   function toggleItem(itemId: string) {
-    setLines((current) =>
-      current.some((line) => line.itemId === itemId)
-        ? current.filter((line) => line.itemId !== itemId)
-        : [...current, { itemId, quantity: catalogueItems.find((item) => item.id === itemId)?.minQuantity ?? 1, discount: 0 }],
-    );
+    setLines((current) => {
+      if(current.some(line=>line.itemId===itemId))return current.filter(line=>line.itemId!==itemId);
+      const item=catalogueItems.find(candidate=>candidate.id===itemId);if(!item)return current;
+      const additions=[itemId,...(item.requiredItemIds??[]),...(item.bundleItemIds??[])].filter(id=>!current.some(line=>line.itemId===id));
+      return [...current,...additions.flatMap(id=>{const component=catalogueItems.find(candidate=>candidate.id===id);return component?[{itemId:id,quantity:component.minQuantity??1,discount:0}]:[]})];
+    });
   }
 
   function selectProposalType(nextTypeId:string){
@@ -326,6 +334,9 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
           answers,
           quoteDiscount,
           lines,
+          currency:quoteCurrency,
+          regionCode,
+          asOfDate,
           document: { title: proposalTitle, introduction: proposalIntroduction, scopeHeading, brandName, brandInitials, proposalTypeId, depositMinor: Math.max(0, Math.round(Number(deposit || 0) * 100)), options: proposalOptions.filter((option) => option.label.trim()), pages:proposalPages },
         }),
       });
@@ -476,6 +487,9 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
                 <label><span>Contact</span><input value={contactName} onChange={(event) => setContactName(event.target.value)} /></label>
                 <label><span>Contact email</span><input type="email" value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} /></label>
                 <label><span>Valid until</span><input type="date" value={validUntil} onChange={(event) => setValidUntil(event.target.value)} /></label>
+                <label><span>Quote currency</span><select value={quoteCurrency} onChange={event=>setQuoteCurrency(event.target.value)}><option>GBP</option><option>EUR</option><option>USD</option><option>AUD</option><option>CAD</option></select></label>
+                <label><span>Commercial region</span><input value={regionCode} maxLength={12} onChange={event=>setRegionCode(event.target.value.toUpperCase())} placeholder="GLOBAL or UK"/></label>
+                <label><span>Pricing date</span><input type="date" value={asOfDate} onChange={event=>setAsOfDate(event.target.value)}/></label>
               </div>
             </div>
           </section>
@@ -493,7 +507,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
               {pickerOpen && (
                 <div className="service-toggle-picker">
                   <div className="service-toggle-heading"><div><strong>Services available for this proposal type</strong><p>Default services are preselected but every service remains under quote-level control.</p></div><button aria-label="Close service selector" onClick={() => setPickerOpen(false)}>×</button></div>
-                  {serviceGroups.map(group=><section key={group.categoryId}><h3>{categoryLabel(group.categoryId)}</h3>{group.subgroups.map(subgroup=><div key={subgroup.subcategoryId||"other"}><h4>{categoryLabel(subgroup.subcategoryId)||"Other"}</h4>{subgroup.items.map(item=>{const selected=lines.some(line=>line.itemId===item.id);return <label className={selected?"selected":""} key={item.id}><input type="checkbox" checked={selected} disabled={locked} onChange={()=>toggleItem(item.id)}/><span className="service-switch" aria-hidden="true"><i/></span><span><strong>{item.name}</strong><small>{item.description||`${item.pricingBasis.replace("_"," ")} · ${labels[item.recurrence]}`}</small><em>{labels[item.recurrence]} · {item.serviceSchedule?"Schedule included":"No schedule"}</em></span><b>{item.basePriceMinor?formatMoney(item.basePriceMinor):"Cost plus"}</b></label>})}</div>)}</section>)}
+                  {serviceGroups.map(group=><section key={group.categoryId}><h3>{categoryLabel(group.categoryId)}</h3>{group.subgroups.map(subgroup=><div key={subgroup.subcategoryId||"other"}><h4>{categoryLabel(subgroup.subcategoryId)||"Other"}</h4>{subgroup.items.map(item=>{const selected=lines.some(line=>line.itemId===item.id);return <label className={selected?"selected":""} key={item.id}><input type="checkbox" checked={selected} disabled={locked} onChange={()=>toggleItem(item.id)}/><span className="service-switch" aria-hidden="true"><i/></span><span><strong>{item.name}</strong><small>{item.description||`${item.pricingBasis.replace("_"," ")} · ${labels[item.recurrence]}`}</small><em>{labels[item.recurrence]} · {item.bundleItemIds?.length?`${item.bundleItemIds.length} bundled components`:item.optionalUpgradeItemIds?.length?`${item.optionalUpgradeItemIds.length} optional upgrades`:item.serviceSchedule?"Schedule included":"No schedule"}</em></span><b>{item.basePriceMinor?formatMoney(item.basePriceMinor,item.baseCurrency):item.pricingBasis.replace("_"," ")}</b></label>})}</div>)}</section>)}
                 </div>
               )}
 
@@ -510,9 +524,9 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
                       <div className="line-row" role="row">
                         <span className="item-cell"><span className="item-glyph">{item.name.charAt(0)}</span><span><strong>{item.name}</strong><small>{categoryLabel(item.categoryId)}{item.subcategoryId?` / ${categoryLabel(item.subcategoryId)}`:""} · {item.unitLabel} · {labels[item.recurrence]}</small></span></span>
                         <span><input className="quantity-input" aria-label={`${item.name} quantity`} type="number" disabled={locked} min={item.minQuantity ?? 1} max={item.maxQuantity} value={selected.quantity} onChange={(event) => updateQuantity(item.id, Number(event.target.value))} /></span>
-                        <span>{line ? formatMoney(line.effectiveUnitPriceMinor) : "—"}</span>
+                        <span>{line ? formatMoney(line.effectiveUnitPriceMinor,priced?.currency) : "—"}</span>
                         <span className={line?.marginBp !== null && line?.marginBp !== undefined && line.marginBp < 3500 ? "margin-low" : "margin-good"}>{line?.marginBp === null || line?.marginBp === undefined ? "Unknown" : `${(line.marginBp / 100).toFixed(1)}%`}</span>
-                        <span className="line-total">{line ? formatMoney(line.finalPriceMinor) : "—"}</span>
+                        <span className="line-total">{line ? formatMoney(line.finalPriceMinor,priced?.currency) : "—"}</span>
                         <span className="line-actions"><button aria-label={`Explain ${item.name}`} onClick={() => setExplainLine(explainLine === item.id ? null : item.id)}>⌄</button><button aria-label={`Remove ${item.name}`} disabled={locked} onClick={() => toggleItem(item.id)}>×</button></span>
                       </div>
                       {explainLine === item.id && line && (
@@ -584,7 +598,7 @@ function QuoteSummary({ quote, reference, ruleSetVersion, errors, discount, setD
 
       <div className="summary-lines">
         {quote?.lines.map((line) => (
-          <div key={line.lineId}><span>{line.itemName}<small>{line.quantity} × {line.unitLabel}</small></span><strong>{formatMoney(line.finalPriceMinor)}</strong></div>
+          <div key={line.lineId}><span>{line.itemName}<small>{line.quantity} × {line.unitLabel}</small></span><strong>{formatMoney(line.finalPriceMinor,quote.currency)}</strong></div>
         ))}
       </div>
 
@@ -595,9 +609,10 @@ function QuoteSummary({ quote, reference, ruleSetVersion, errors, discount, setD
       </label>
 
       <div className="totals">
-        <div><span>One-off total</span><strong>{quote ? formatMoney(quote.oneOffSubtotalMinor) : "—"}</strong></div>
-        {recurring.map(([frequency, amount]) => <div key={frequency}><span>{labels[frequency]} recurring</span><strong>{formatMoney(amount)}</strong></div>)}
-        {recurring.length > 0 && <div className="annualised"><span>Annualised recurring</span><strong>{quote ? formatMoney(quote.recurringAnnualisedMinor) : "—"}</strong></div>}
+        <div><span>One-off total</span><strong>{quote ? formatMoney(quote.oneOffSubtotalMinor,quote.currency) : "—"}</strong></div>
+        {recurring.map(([frequency, amount]) => <div key={frequency}><span>{labels[frequency]} recurring</span><strong>{formatMoney(amount,quote?.currency)}</strong></div>)}
+        {recurring.length > 0 && <div className="annualised"><span>Annualised recurring</span><strong>{quote ? formatMoney(quote.recurringAnnualisedMinor,quote.currency) : "—"}</strong></div>}
+        {quote&&quote.taxTotalMinor>0&&<div><span>Tax across displayed periods</span><strong>{formatMoney(quote.taxTotalMinor,quote.currency)}</strong></div>}
       </div>
 
       <div className="health-row">
@@ -610,7 +625,7 @@ function QuoteSummary({ quote, reference, ruleSetVersion, errors, discount, setD
   );
 }
 
-function PreviewBlock({block,quote,recurring,options}:{block:DocumentPage["blocks"][number];quote:PricedQuote;recurring:Array<[Frequency,number]>;options:Array<{id:string;label:string}>}){if(block.enabled===false)return null;const heading=<>{block.eyebrow&&<p className="eyebrow">{block.eyebrow}</p>}{block.title&&<h2>{block.title}</h2>}</>;if(block.type==="spacer")return <div className="recipient-spacer"/>;if(block.type==="pricing_table")return <div className="recipient-content-block">{heading}{block.display!=="totals"&&<section className="document-scope service-schedule-scope">{quote.lines.map(line=><div className="proposal-service-line" key={line.lineId}><div><span><strong>{line.itemName}</strong><small>{line.quantity} {line.unitLabel}</small></span><strong>{formatMoney(line.finalPriceMinor)}</strong></div>{(line.description||line.serviceSchedule||line.serviceTerms)&&<section>{line.description&&<p>{line.description}</p>}{line.serviceSchedule&&<div><strong>Service schedule</strong><p>{line.serviceSchedule}</p></div>}{line.serviceTerms&&<div><strong>Service terms</strong><p>{line.serviceTerms}</p></div>}</section>}</div>)}</section>}{block.display!=="lines"&&<section className="document-totals"><div><small>ONE-OFF INVESTMENT</small><strong>{formatMoney(quote.oneOffSubtotalMinor)}</strong></div>{recurring.map(([frequency,amount])=><div key={frequency}><small>{labels[frequency].toUpperCase()} RECURRING</small><strong>{formatMoney(amount)}</strong></div>)}</section>}</div>;if(["feature_grid","timeline","team","faq"].includes(block.type))return <div className="recipient-content-block">{heading}<div className="recipient-items" style={{"--columns":String(block.columns??3)} as CSSProperties}>{(block.items??[]).map(item=><div key={item.id}><strong>{item.title}</strong><p>{item.content}</p></div>)}</div></div>;if(block.type==="image")return <div className="recipient-content-block">{heading}{block.fileId&&<img className="recipient-media" src={`/api/files/${block.fileId}`} alt={block.title??"Proposal image"}/>}</div>;if(block.type==="options")return <div className="recipient-content-block">{heading}<div className="recipient-items">{options.map(option=><div key={option.id}><strong>{option.label}</strong></div>)}</div></div>;return <div className={`recipient-content-block ${block.type==="callout"?"recipient-callout":""}`}>{heading}{block.content&&<p>{block.content}</p>}</div>}
+function PreviewBlock({block,quote,recurring,options}:{block:DocumentPage["blocks"][number];quote:PricedQuote;recurring:Array<[Frequency,number]>;options:Array<{id:string;label:string}>}){if(block.enabled===false)return null;const heading=<>{block.eyebrow&&<p className="eyebrow">{block.eyebrow}</p>}{block.title&&<h2>{block.title}</h2>}</>;if(block.type==="spacer")return <div className="recipient-spacer"/>;if(block.type==="pricing_table")return <div className="recipient-content-block">{heading}{block.display!=="totals"&&<section className="document-scope service-schedule-scope">{quote.lines.map(line=><div className="proposal-service-line" key={line.lineId}><div><span><strong>{line.itemName}</strong><small>{line.quantity} {line.unitLabel}</small></span><strong>{formatMoney(line.finalPriceMinor,quote.currency)}</strong></div>{(line.description||line.serviceSchedule||line.serviceTerms)&&<section>{line.description&&<p>{line.description}</p>}{line.serviceSchedule&&<div><strong>Service schedule</strong><p>{line.serviceSchedule}</p></div>}{line.serviceTerms&&<div><strong>Service terms</strong><p>{line.serviceTerms}</p></div>}</section>}</div>)}</section>}{block.display!=="lines"&&<section className="document-totals"><div><small>ONE-OFF INVESTMENT</small><strong>{formatMoney(quote.oneOffSubtotalMinor,quote.currency)}</strong></div>{recurring.map(([frequency,amount])=><div key={frequency}><small>{labels[frequency].toUpperCase()} RECURRING</small><strong>{formatMoney(amount)}</strong></div>)}</section>}</div>;if(["feature_grid","timeline","team","faq"].includes(block.type))return <div className="recipient-content-block">{heading}<div className="recipient-items" style={{"--columns":String(block.columns??3)} as CSSProperties}>{(block.items??[]).map(item=><div key={item.id}><strong>{item.title}</strong><p>{item.content}</p></div>)}</div></div>;if(block.type==="image")return <div className="recipient-content-block">{heading}{block.fileId&&<img className="recipient-media" src={`/api/files/${block.fileId}`} alt={block.title??"Proposal image"}/>}</div>;if(block.type==="options")return <div className="recipient-content-block">{heading}<div className="recipient-items">{options.map(option=><div key={option.id}><strong>{option.label}</strong></div>)}</div></div>;return <div className={`recipient-content-block ${block.type==="callout"?"recipient-callout":""}`}>{heading}{block.content&&<p>{block.content}</p>}</div>}
 
 function QuotePreview({ quote, clientName, reference, title, introduction, scopeHeading, brandName, brandInitials, pages, options, onBack }: { quote: PricedQuote; clientName: string; reference: string; title: string; introduction: string; scopeHeading: string; brandName: string; brandInitials: string; pages:DocumentPage[];options:Array<{id:string;label:string}>; onBack: () => void }) {
   const recurring = (Object.entries(quote.recurringByFrequency) as Array<[Frequency, number]>).filter(([frequency, amount]) => frequency !== "one_off" && amount > 0);
@@ -619,7 +634,7 @@ function QuotePreview({ quote, clientName, reference, title, introduction, scope
       <div className="preview-toolbar"><button className="button secondary" onClick={onBack}>← Back to builder</button><span>Client preview · responsive web document</span><button className="button primary" onClick={() => window.print()}>Print or save PDF</button></div>
       <article className="client-document">
         <header><span className="client-logo">{brandInitials || "FAP"}</span><div><small>PROPOSAL {reference}</small><h1>{title}</h1><p>Prepared for {clientName}</p></div></header>
-        {pages.length?pages.map(page=><section className={`recipient-page page-${page.format} background-${page.background}`} key={page.id}>{page.blocks.map(block=><PreviewBlock key={block.id} block={block} quote={quote} recurring={recurring} options={options}/>)}</section>):<><section className="document-intro"><p className="eyebrow">Our proposal</p><h2>Clarity from scope to commitment.</h2><p>{introduction}</p></section><section className="document-scope"><p className="eyebrow">Scope and investment</p><h2>{scopeHeading}</h2>{quote.lines.map((line) => <div key={line.lineId}><span><strong>{line.itemName}</strong><small>{line.quantity} {line.unitLabel}{line.quantity === 1 ? "" : "s"}</small></span><strong>{formatMoney(line.finalPriceMinor)}</strong></div>)}</section><section className="document-totals"><div><small>ONE-OFF INVESTMENT</small><strong>{formatMoney(quote.oneOffSubtotalMinor)}</strong></div>{recurring.map(([frequency, amount]) => <div key={frequency}><small>{labels[frequency].toUpperCase()} RECURRING</small><strong>{formatMoney(amount)}</strong></div>)}</section></>}
+        {pages.length?pages.map(page=><section className={`recipient-page page-${page.format} background-${page.background}`} key={page.id}>{page.blocks.map(block=><PreviewBlock key={block.id} block={block} quote={quote} recurring={recurring} options={options}/>)}</section>):<><section className="document-intro"><p className="eyebrow">Our proposal</p><h2>Clarity from scope to commitment.</h2><p>{introduction}</p></section><section className="document-scope"><p className="eyebrow">Scope and investment</p><h2>{scopeHeading}</h2>{quote.lines.map((line) => <div key={line.lineId}><span><strong>{line.itemName}</strong><small>{line.quantity} {line.unitLabel}{line.quantity === 1 ? "" : "s"}</small></span><strong>{formatMoney(line.finalPriceMinor,quote.currency)}</strong></div>)}</section><section className="document-totals"><div><small>ONE-OFF INVESTMENT</small><strong>{formatMoney(quote.oneOffSubtotalMinor,quote.currency)}</strong></div>{recurring.map(([frequency, amount]) => <div key={frequency}><small>{labels[frequency].toUpperCase()} RECURRING</small><strong>{formatMoney(amount)}</strong></div>)}</section></>}
         <section className="document-accept"><div><p className="eyebrow">Next step</p><h2>Ready to proceed?</h2><p>The formal acceptance workflow will record the selected option, full name and timestamp.</p></div><button>Accept proposal</button></section>
         <footer><span>{brandName}</span><span>Valid until 14 September 2026</span><span>Private and confidential</span></footer>
       </article>
@@ -947,6 +962,8 @@ export default function QuoteBench({ currentUser }: { currentUser: ChatGPTUser |
           {screen === "documents" && <DocumentsScreen />}
           {screen === "delivery" && <DeliveryScreen quotes={savedQuotes} onSent={refreshQuotes} />}
           {screen === "templates" && <TemplatesScreen onProvisioned={refreshQuotes} startQuote={startNewQuote} />}
+          {screen === "engagement" && <EngagementScreen proposalTypes={proposalTypes} />}
+          {screen === "ai" && <AiAssistanceScreen />}
           {screen === "billing" && <BillingScreen />}
           {screen === "governance" && <GovernanceScreen />}
           {screen === "operator" && <OperatorScreen />}

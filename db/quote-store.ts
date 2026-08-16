@@ -82,6 +82,13 @@ export type PublicQuote = StoredQuote & {
   recipientId?: string;
   recipientName?: string;
   recipientEmail?: string;
+  recipientRole?: import("./delivery-store").RecipientRole;
+  signingOrder?: number;
+  signatureRequired?: boolean;
+  recipientSignedAt?: string | null;
+  signingExpiresAt?: string | null;
+  signingComplete?: boolean;
+  pendingSignatures?: number;
   ruleSetVersion: number;
   pricingSnapshot: {
     currency: string;
@@ -90,7 +97,7 @@ export type PublicQuote = StoredQuote & {
     recurringByFrequency: Record<string, number>;
     recurringAnnualisedMinor: number;
   };
-  document: { title: string; introduction: string; scopeHeading: string; brandName?: string; brandInitials?: string; proposalTypeId?:string; depositMinor?: number; options?: Array<{ id: string; label: string }>; pages?:import("./document-store").DocumentPage[] };
+  document: { title: string; introduction: string; scopeHeading: string; brandName?: string; brandInitials?: string; proposalTypeId?:string; depositMinor?: number; options?: Array<{ id: string; label: string }>; pages?:import("./document-store").DocumentPage[]; legalContent?:import("./engagement-store").LegalSnapshot[] };
 };
 
 export type InternalQuote = StoredQuote & {
@@ -616,7 +623,7 @@ export async function getPublicQuote(token: string): Promise<PublicQuote | null>
     ruleSetVersion: row.rule_set_version,
     pricingSnapshot: JSON.parse(row.pricing_snapshot_json) as PublicQuote["pricingSnapshot"],
     document: JSON.parse(row.document_json) as PublicQuote["document"],
-    ...(recipient ? { recipientId: recipient.id, recipientName: recipient.name, recipientEmail: recipient.email } : {}),
+    ...(recipient ? { recipientId: recipient.id, recipientName: recipient.name, recipientEmail: recipient.email, recipientRole: recipient.signer_role, signingOrder: recipient.signing_order, signatureRequired: recipient.signature_required === 1, recipientSignedAt: recipient.signed_at, signingExpiresAt: recipient.expires_at } : {}),
   };
 }
 
@@ -682,11 +689,20 @@ export async function acceptQuote(token: string, acceptedBy: string, userAgent: 
       pricing: quote.pricingSnapshot,
       document: quote.document,
   };
-  const acceptanceSnapshot = { quote: quoteSnapshot, evidence: { ...evidence, quoteSnapshotHash: await sha256(JSON.stringify(quoteSnapshot)) } };
+  const quoteSnapshotHash = await sha256(JSON.stringify(quoteSnapshot));
+  let signerEvidence: Record<string, unknown>[] = [];
+  if (quote.recipientId) {
+    const { recordRecipientSignature } = await import("./delivery-store");
+    const signing = await recordRecipientSignature(token, acceptedBy, { ...evidence, quoteSnapshotHash });
+    signerEvidence = signing.signers.map((signer) => ({ ...signer, signature_evidence_json: signer.signature_evidence_json ? JSON.parse(String(signer.signature_evidence_json)) : null }));
+    if (!signing.complete) return { ...quote, recipientSignedAt: evidence.acceptedAt, signingComplete: false, pendingSignatures: signing.remaining };
+  }
+  const acceptedNames = signerEvidence.length ? signerEvidence.map((signer) => String(signer.name)).join(", ") : acceptedBy;
+  const acceptanceSnapshot = { quote: quoteSnapshot, evidence: { ...evidence, acceptedBy: acceptedNames, quoteSnapshotHash, signers: signerEvidence } };
   const accepted = await db.prepare(`UPDATE quotes SET status = 'Accepted', accepted_at = CURRENT_TIMESTAMP,
       accepted_by = ?, acceptance_evidence_json = ?, acceptance_snapshot_json = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND status IN ('Issued', 'Viewed') RETURNING accepted_at`)
-      .bind(acceptedBy, JSON.stringify(acceptanceSnapshot.evidence), JSON.stringify(acceptanceSnapshot), quote.id)
+      .bind(acceptedNames, JSON.stringify(acceptanceSnapshot.evidence), JSON.stringify(acceptanceSnapshot), quote.id)
       .first<{ accepted_at: string }>();
   if (!accepted) {
     const current = await getPublicQuote(token);
@@ -696,13 +712,21 @@ export async function acceptQuote(token: string, acceptedBy: string, userAgent: 
   await db.prepare(`INSERT INTO quote_events (
       id, tenant_id, quote_reference, actor_email, event_type, payload_json
     ) VALUES (?, ?, ?, ?, 'quote.accepted', ?)`)
-      .bind(crypto.randomUUID(), quote.tenantId, quote.reference, acceptedBy, JSON.stringify(acceptanceSnapshot.evidence))
+      .bind(crypto.randomUUID(), quote.tenantId, quote.reference, acceptedNames, JSON.stringify(acceptanceSnapshot.evidence))
       .run();
   const { emitWebhooks } = await import("./integration-store");
-  await emitWebhooks(quote.tenantId, "quote.accepted", { reference: quote.reference, acceptedBy });
+  await emitWebhooks(quote.tenantId, "quote.accepted", { reference: quote.reference, acceptedBy: acceptedNames, signatoryCount: signerEvidence.length || 1 });
   const { sendAcceptanceNotifications } = await import("./notification-store");
-  await sendAcceptanceNotifications({ reference: quote.reference, clientName: quote.clientName, recipientEmail: quote.recipientEmail ?? quote.contactEmail, ownerEmail: quote.ownerEmail, acceptedBy, token });
-  return { ...quote, status: "Accepted" as const, acceptedBy, acceptedAt: accepted.accepted_at };
+  await sendAcceptanceNotifications({ reference: quote.reference, clientName: quote.clientName, recipientEmail: quote.recipientEmail ?? quote.contactEmail, ownerEmail: quote.ownerEmail, acceptedBy: acceptedNames, token });
+  return { ...quote, status: "Accepted" as const, acceptedBy: acceptedNames, acceptedAt: accepted.accepted_at, signingComplete: true, pendingSignatures: 0 };
+}
+
+export async function getAcceptanceCertificateData(tenantId: string, reference: string) {
+  await ensureSchema(); const db = await database();
+  const quote = await db.prepare("SELECT reference,client_name,status,accepted_at,accepted_by,acceptance_snapshot_json FROM quotes WHERE tenant_id=? AND reference=?").bind(tenantId, reference).first<Record<string, unknown>>();
+  if (!quote || quote.status !== "Accepted" || !quote.acceptance_snapshot_json) throw new Error("An acceptance certificate is available only after every required signature is complete.");
+  const { listDeliveryDetail } = await import("./delivery-store"); const delivery = await listDeliveryDetail(tenantId, reference);
+  return { reference: String(quote.reference), clientName: String(quote.client_name), acceptedAt: String(quote.accepted_at), acceptedBy: String(quote.accepted_by), snapshot: JSON.parse(String(quote.acceptance_snapshot_json)) as Record<string, unknown>, signers: delivery.recipients.filter((row) => Number(row.signature_required) === 1).map((row) => ({ name: String(row.name), email: String(row.email), role: String(row.signer_role), signingOrder: Number(row.signing_order), signedAt: row.signed_at ? String(row.signed_at) : null })) };
 }
 
 export async function markQuoteAcceptedOffline(tenantId: string, reference: string, acceptedBy: string, actorEmail: string) {

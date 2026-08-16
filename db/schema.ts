@@ -183,6 +183,10 @@ export const quoteRecipients = sqliteTable(
     id: text("id").primaryKey(), tenantId: text("tenant_id").notNull(), quoteReference: text("quote_reference").notNull(),
     name: text("name").notNull(), email: text("email").notNull(), token: text("token").notNull(),
     status: text("status", { enum: ["Queued", "Delivered", "Bounced", "Complained", "Revoked"] }).notNull(),
+    signerRole: text("signer_role", { enum: ["signatory", "approver", "countersignatory", "viewer"] }).notNull().default("signatory"),
+    signingOrder: integer("signing_order").notNull().default(1), signatureRequired: integer("signature_required", { mode: "boolean" }).notNull().default(true),
+    signedAt: text("signed_at"), acceptedName: text("accepted_name"), signatureEvidenceJson: text("signature_evidence_json"), expiresAt: text("expires_at"),
+    reminderIntervalDays: integer("reminder_interval_days").notNull().default(3), nextReminderAt: text("next_reminder_at"), reminderCount: integer("reminder_count").notNull().default(0),
     deliveredAt: text("delivered_at"), firstViewedAt: text("first_viewed_at"), revokedAt: text("revoked_at"),
     lastSentAt: text("last_sent_at"), createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   },
@@ -269,7 +273,8 @@ export const catalogueItems = sqliteTable(
     serviceSchedule: text("service_schedule").notNull().default(""),
     serviceTerms: text("service_terms").notNull().default(""),
     unitLabel: text("unit_label").notNull(),
-    pricingBasis: text("pricing_basis", { enum: ["fixed", "per_unit", "cost_plus"] }).notNull(),
+    pricingBasis: text("pricing_basis", { enum: ["fixed", "per_unit", "cost_plus", "retainer", "usage"] }).notNull(),
+    cpqJson: text("cpq_json").notNull().default("{}"),
     basePriceMinor: integer("base_price_minor"),
     costMinor: integer("cost_minor"),
     targetMarginBp: integer("target_margin_bp"),
@@ -335,3 +340,19 @@ export const pricingRuleSets = sqliteTable(
     index("pricing_rule_sets_tenant_status_idx").on(table.tenantId, table.status),
   ],
 );
+
+export const engagementContent = sqliteTable("engagement_content", {
+  id: text("id").primaryKey(), tenantId: text("tenant_id").notNull(), contentGroupId: text("content_group_id").notNull(),
+  kind: text("kind", { enum: ["engagement_letter", "service_schedule", "master_terms", "jurisdiction_clause", "clause"] }).notNull(),
+  name: text("name").notNull(), jurisdiction: text("jurisdiction").notNull().default("England and Wales"), version: integer("version").notNull().default(1),
+  status: text("status", { enum: ["Draft", "Published", "Retired"] }).notNull().default("Draft"), content: text("content").notNull(),
+  mandatory: integer("mandatory", { mode: "boolean" }).notNull().default(false), proposalTypeIdsJson: text("proposal_type_ids_json").notNull().default("[]"),
+  effectiveFrom: text("effective_from"), checksum: text("checksum"), createdBy: text("created_by").notNull(), publishedBy: text("published_by"), publishedAt: text("published_at"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`), updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [uniqueIndex("engagement_content_group_version_unique").on(table.tenantId, table.contentGroupId, table.version), index("engagement_content_tenant_status_idx").on(table.tenantId, table.status, table.kind)]);
+
+export const aiProviderConfigs = sqliteTable("ai_provider_configs", {
+  tenantId: text("tenant_id").primaryKey(), providerName: text("provider_name").notNull(), endpointUrl: text("endpoint_url").notNull(), model: text("model").notNull(),
+  credentialCiphertext: text("credential_ciphertext"), enabledFeaturesJson: text("enabled_features_json").notNull().default("[]"), updatedBy: text("updated_by").notNull(),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});

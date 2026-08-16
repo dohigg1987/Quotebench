@@ -95,3 +95,31 @@ test("E3-R45: an empty basket is valid and explicit", () => {
   assert.equal(result.quote.oneOffSubtotalMinor, 0);
   assert.equal(result.quote.warnings[0]?.code, "pricing.empty_basket");
 });
+
+test("advanced CPQ enforces dependencies and incompatible selections", () => {
+  const bundle = { ...workshop, id: "bundle", requiredItemIds: ["required"], incompatibleItemIds: ["conflict"] };
+  const result = price({ ...baseRequest, answers: {}, lines: [{ lineId: "bundle", item: bundle, quantity: 1 }, { lineId: "conflict", item: { ...retainer, id: "conflict" }, quantity: 1 }] });
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.deepEqual(result.errors.map(error => error.code).sort(), ["pricing.incompatible_items", "pricing.required_item_missing"]);
+});
+
+test("advanced CPQ applies item volume tiers, regional currency pricing and tax", () => {
+  const item = { ...workshop, baseCurrency: "GBP", volumeTiers: [{ fromQuantity: 10, unitPriceMinor: money.minor(30_000) }], regionalPrices: [{ regionCode: "EU", currency: "EUR", unitPriceMinor: money.minor(40_000) }], taxCode: "VAT20", taxRateBp: money.bp(2_000) };
+  const result = price({ ...baseRequest, currency: "EUR", regionCode: "EU", answers: {}, lines: [{ lineId: "tiered", item, quantity: 10 }], ruleSet: { ...ruleSet, quantityBands: [], modifiers: [], minimumFees: [], roundingIncrementMinor: money.minor(0) } });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.quote.lines[0].effectiveUnitPriceMinor, 30_000);
+  assert.equal(result.quote.lines[0].taxMinor, 60_000);
+  assert.equal(result.quote.lines[0].grossPriceMinor, 360_000);
+});
+
+test("advanced CPQ calculates usage overage, minimum commitments and indexation", () => {
+  const item = { ...retainer, pricingBasis: "usage", basePriceMinor: money.minor(10_000), includedUnits: 100, overagePriceMinor: money.minor(200), minimumCommitmentMinor: money.minor(25_000), indexation: { method: "fixed", annualRateBp: money.bp(1_000), baseDate: "2025-01-01", intervalMonths: 12 } };
+  const result = price({ ...baseRequest, asOfDate: "2026-01-01", answers: {}, lines: [{ lineId: "usage", item, quantity: 120 }], ruleSet: { ...ruleSet, quantityBands: [], modifiers: [], minimumFees: [], roundingIncrementMinor: money.minor(0) } });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.quote.lines[0].baseUnitPriceMinor, 11_000);
+  assert.equal(result.quote.lines[0].finalPriceMinor, 25_000);
+  assert.ok(result.quote.lines[0].warnings.some(warning => warning.code === "pricing.minimum_commitment_applied"));
+});

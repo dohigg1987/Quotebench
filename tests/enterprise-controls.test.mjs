@@ -102,3 +102,19 @@ test("Service catalogue supports category hierarchy, proposal types and quote-le
   assert.match(recipient,/Service schedule/);
   assert.match(recipient,/Service terms/);
 });
+
+test("Advanced CPQ, engagement governance, ordered e-signature and BYO AI are industrialised", async () => {
+  const pricing = await source("packages/pricing-engine/src/index.ts");
+  for (const capability of ["bundleItemIds", "optionalUpgradeItemIds", "requiredItemIds", "volumeTiers", "regionalPrices", "taxRateBp", "indexation", "includedUnits", "overagePriceMinor"]) assert.match(pricing, new RegExp(capability));
+  const engagement = await source("db/engagement-store.ts");
+  assert.match(engagement, /Published legal content is immutable/);
+  assert.match(engagement, /missingMandatory/);
+  assert.match(engagement, /SHA-256/);
+  const signing = await source("db/delivery-store.ts");
+  for (const capability of ["signer_role", "signing_order", "signature_required", "signed_at", "reminder_count", "recordRecipientSignature"]) assert.match(signing, new RegExp(capability));
+  const ai = await source("db/ai-store.ts");
+  assert.match(ai, /AES-GCM/);
+  assert.match(ai, /redirect: "error"/);
+  assert.match(ai, /human must approve every change/i);
+  assert.doesNotMatch(ai, /openai\.com|anthropic\.com|googleapis\.com/i);
+});

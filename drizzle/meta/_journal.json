@@ -120,6 +120,13 @@
       "when": 1786867092606,
       "tag": "0016_blue_karma",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1786870000000,
+      "tag": "0017_enterprise_cedar",
+      "breakpoints": true
     }
   ]
 }
