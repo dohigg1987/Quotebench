@@ -97,7 +97,7 @@ export type PublicQuote = StoredQuote & {
     recurringByFrequency: Record<string, number>;
     recurringAnnualisedMinor: number;
   };
-  document: { title: string; introduction: string; scopeHeading: string; brandName?: string; brandInitials?: string; proposalTypeId?:string; depositMinor?: number; options?: Array<{ id: string; label: string }>; pages?:import("./document-store").DocumentPage[]; legalContent?:import("./engagement-store").LegalSnapshot[] };
+  document: { title: string; introduction: string; scopeHeading: string; brandName?: string; brandInitials?: string; proposalTypeId?:string; templateId?:string; depositMinor?: number; options?: Array<{ id: string; label: string }>; pages?:import("./document-store").DocumentPage[]; legalContent?:import("./engagement-store").LegalSnapshot[] };
 };
 
 export type InternalQuote = StoredQuote & {
@@ -105,7 +105,7 @@ export type InternalQuote = StoredQuote & {
   answers: { values?: Record<string, string>; complexity?: string; turnaround?: string; quoteDiscount?: number };
   pricingSnapshot:PublicQuote["pricingSnapshot"];
   ruleSetVersion:number;
-  document: { title: string; introduction: string; scopeHeading: string; brandName?: string; brandInitials?: string; proposalTypeId?:string; depositMinor?: number; options?: Array<{ id: string; label: string }>; pages?:import("./document-store").DocumentPage[] };
+  document: { title: string; introduction: string; scopeHeading: string; brandName?: string; brandInitials?: string; proposalTypeId?:string; templateId?:string; depositMinor?: number; options?: Array<{ id: string; label: string }>; pages?:import("./document-store").DocumentPage[] };
   revisionOf: string | null;
 };
 
