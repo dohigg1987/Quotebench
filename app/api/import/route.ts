@@ -1,4 +1,4 @@
-import { getChatGPTUser } from "../../chatgpt-auth";
+import { getCurrentUser } from "../../auth";
 import { upsertCatalogueItem } from "../../../db/catalogue-store";
 import { upsertClient } from "../../../db/client-store";
 import type { CatalogueItem, Frequency, PricingBasis } from "../../../packages/pricing-engine/src/index";
@@ -50,8 +50,8 @@ function rowValue(headers: string[], row: string[], mapping: Record<string, stri
 }
 
 export async function POST(request: Request) {
-  const user = await getChatGPTUser();
-  if (!user) return Response.json({ error: "Sign in with ChatGPT to import workspace data." }, { status: 401 });
+  const user = await getCurrentUser();
+  if (!user) return Response.json({ error: "Sign in to QuoteBench to import workspace data." }, { status: 401 });
   try {
     const context = await requireWorkspaceContext(user, ["owner", "admin"]);
     const body = (await request.json()) as { resource?: "clients" | "catalogue"; csv?: string; mapping?: Record<string, string> };

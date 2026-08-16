@@ -121,7 +121,7 @@ test("Reusable templates use the visual editor and bind live quote metadata", as
   assert.match(puckSource, /isValidElement\(value\)/);
   assert.doesNotMatch(puckSource, /resolveProposalText\(props\.(?:title|content) as string/);
   const telemetry = await source("app/api/client-errors/route.ts");
-  assert.match(telemetry, /getChatGPTUser/);
+  assert.match(telemetry, /getCurrentUser/);
   assert.match(telemetry, /quotebench_client_error/);
   assert.match(await source("app/proposal-puck.tsx"), /PUCK_IFRAME = \{ enabled: false, waitForStyles: false, syncHostStyles: false \}/);
   assert.match(shell, /lazy\(\(\) => import\("\.\/templates-screen"\)\)/);

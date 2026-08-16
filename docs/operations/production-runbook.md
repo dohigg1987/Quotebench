@@ -2,7 +2,7 @@
 
 ## Service boundaries
 
-QuoteBench runs as a Cloudflare Worker with D1 database storage, R2 object storage and Sign in with ChatGPT. Transactional email and Stripe are optional external providers activated only through production secrets. The public recipient surface is token-authenticated; operator and workspace surfaces require authenticated identity and role checks.
+QuoteBench runs as a Cloudflare Worker with Neon Postgres through Hyperdrive, R2 object storage, a Queue-backed PDF consumer and Neon Auth. Transactional email and Stripe are optional external providers activated only through production secrets. The public recipient surface is token-authenticated; operator and workspace surfaces require authenticated identity and role checks.
 
 ## Service indicators
 
@@ -10,7 +10,7 @@ QuoteBench runs as a Cloudflare Worker with D1 database storage, R2 object stora
 - Correctness: quote pricing, issue, view, acceptance and PDF-generation success rates.
 - Latency: p95 request duration for authenticated APIs and public proposal views.
 - Delivery: transactional-email acceptance and webhook retry backlog.
-- Durability: successful database recovery point and R2 inventory verification.
+- Durability: successful Neon recovery point and R2 inventory verification.
 
 ## Alert thresholds
 
@@ -28,7 +28,7 @@ Create an urgent alert for any of the following:
 
 1. Record the incident start time and appoint an incident lead.
 2. Review worker errors by request identifier, route, status and deployment version.
-3. Check D1 and R2 health separately from email and billing providers.
+3. Check Neon, Hyperdrive, R2 and Queue health separately from email and billing providers.
 4. If a release caused the incident, stop further releases and redeploy the last verified version.
 5. If confidentiality or tenant isolation may be affected, disable the relevant route or integration and follow the incident-response procedure.
 6. Preserve logs and decision records. Do not paste customer content into public tickets.
@@ -43,9 +43,9 @@ Proposal links remain queued and may be copied manually by an authorised workspa
 
 Existing entitlements remain authoritative. Disable new checkout initiation, retain webhook events and reconcile subscription state when Stripe recovers.
 
-### D1 degraded
+### Neon or Hyperdrive degraded
 
-Stop write traffic if inconsistent results are observed. Validate the last known recovery point and choose restore or roll-forward according to the backup procedure.
+Stop write traffic if inconsistent results are observed. Validate the last known Neon recovery point and choose restore, branch recovery or roll-forward according to the backup procedure.
 
 ### R2 degraded
 

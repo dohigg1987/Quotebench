@@ -1,3 +1,5 @@
+import { getDatabase } from "./database.ts";
+
 type EmailInput = {
   to: string;
   subject: string;
@@ -58,13 +60,11 @@ export async function sendProposalDelivery(
   message: string,
 ) {
   const { env } = await import("cloudflare:workers");
-  const siteOrigin = origin || String(env.PUBLIC_SITE_URL ?? "https://quotebench-app.doh87.chatgpt.site");
+  const siteOrigin = origin || String(env.PUBLIC_SITE_URL ?? "https://quotebench.invalid");
   const link = `${siteOrigin}/q/${recipient.token}`;
-  const brand = env.DB
-    ? await env.DB.prepare("SELECT sending_name,reply_to FROM brand_profiles WHERE tenant_id=? ORDER BY is_default DESC LIMIT 1")
-      .bind(tenantId)
-      .first<{ sending_name: string; reply_to: string }>()
-    : null;
+  const brand = await (await getDatabase()).prepare("SELECT sending_name,reply_to FROM brand_profiles WHERE tenant_id=? ORDER BY is_default DESC LIMIT 1")
+    .bind(tenantId)
+    .first<{ sending_name: string; reply_to: string }>();
 
   return sendTransactionalEmail({
     to: recipient.email,
@@ -85,7 +85,7 @@ export async function sendAcceptanceNotifications(input: {
   token: string;
 }) {
   const { env } = await import("cloudflare:workers");
-  const origin = String(env.PUBLIC_SITE_URL ?? "https://quotebench-app.doh87.chatgpt.site");
+  const origin = String(env.PUBLIC_SITE_URL ?? "https://quotebench.invalid");
   const link = `${origin}/q/${input.token}`;
   const safeReference = escapeHtml(input.reference);
   const safeClient = escapeHtml(input.clientName);

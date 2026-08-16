@@ -1,3 +1,4 @@
+import { getDatabase } from "./database.ts";
 export type EngagementContentKind = "engagement_letter" | "service_schedule" | "master_terms" | "jurisdiction_clause" | "clause";
 export type EngagementContentStatus = "Draft" | "Published" | "Retired";
 
@@ -45,9 +46,7 @@ const CONTENT_SCHEMA = `CREATE TABLE IF NOT EXISTS engagement_content (
 )`;
 
 async function database() {
-  const { env } = await import("cloudflare:workers");
-  if (!env.DB) throw new Error("Engagement governance storage is unavailable.");
-  return env.DB;
+  return getDatabase("Engagement governance storage is unavailable.");
 }
 
 async function ensureEngagement() {

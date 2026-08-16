@@ -1,4 +1,4 @@
-import { getChatGPTUser } from "../../chatgpt-auth";
+import { getCurrentUser } from "../../auth";
 import { listCatalogueWorkspace, upsertCatalogueItem, upsertProposalType, upsertServiceCategory } from "../../../db/catalogue-store";
 import type { CatalogueItem, Frequency, PricingBasis } from "../../../packages/pricing-engine/src/index";
 import { requireWorkspaceContext } from "../../../db/workspace-store";
@@ -9,14 +9,14 @@ const BASES: PricingBasis[] = ["fixed", "per_unit", "cost_plus", "retainer", "us
 const FREQUENCIES: Frequency[] = ["one_off", "weekly", "fortnightly", "monthly", "quarterly", "annually"];
 
 export async function GET() {
-  const user = await getChatGPTUser();
-  if (!user) return Response.json({ error: "Sign in with ChatGPT to access the catalogue." }, { status: 401 });
+  const user = await getCurrentUser();
+  if (!user) return Response.json({ error: "Sign in to QuoteBench to access the catalogue." }, { status: 401 });
   try { const context = await requireWorkspaceContext(user, ["owner", "admin", "quoter"]); return Response.json(await listCatalogueWorkspace(context.tenantId)); } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "forbidden" }, { status: 403 }); }
 }
 
 export async function POST(request: Request) {
-  const user = await getChatGPTUser();
-  if (!user) return Response.json({ error: "Sign in with ChatGPT to manage the catalogue." }, { status: 401 });
+  const user = await getCurrentUser();
+  if (!user) return Response.json({ error: "Sign in to QuoteBench to manage the catalogue." }, { status: 401 });
   try {
     const context = await requireWorkspaceContext(user, ["owner", "admin"]);
     const body = (await request.json()) as Partial<CatalogueItem> & { action?:string; parentId?:string|null; sortOrder?:number; active?:boolean };

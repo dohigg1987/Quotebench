@@ -1,18 +1,18 @@
-import { getChatGPTUser } from "../../chatgpt-auth";
+import { getCurrentUser } from "../../auth";
 import { listClients, upsertClient } from "../../../db/client-store";
 import { requireWorkspaceContext } from "../../../db/workspace-store";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const user = await getChatGPTUser();
-  if (!user) return Response.json({ error: "Sign in with ChatGPT to access clients." }, { status: 401 });
+  const user = await getCurrentUser();
+  if (!user) return Response.json({ error: "Sign in to QuoteBench to access clients." }, { status: 401 });
   try { const context = await requireWorkspaceContext(user, ["owner", "admin", "quoter"]); return Response.json({ clients: await listClients(context.tenantId) }); } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "forbidden" }, { status: 403 }); }
 }
 
 export async function POST(request: Request) {
-  const user = await getChatGPTUser();
-  if (!user) return Response.json({ error: "Sign in with ChatGPT to manage clients." }, { status: 401 });
+  const user = await getCurrentUser();
+  if (!user) return Response.json({ error: "Sign in to QuoteBench to manage clients." }, { status: 401 });
   try {
     const context = await requireWorkspaceContext(user, ["owner", "admin", "quoter"]);
     const body = (await request.json()) as { id?: string; name?: string; contactName?: string; contactEmail?: string; status?: "Active" | "Archived" };

@@ -1,3 +1,4 @@
+import { getDatabase } from "./database.ts";
 export type RecipientRole = "signatory" | "approver" | "countersignatory" | "viewer";
 export type Recipient = {
   id: string; quoteReference: string; name: string; email: string; token: string;
@@ -17,7 +18,7 @@ const RECIPIENT_SCHEMA = `CREATE TABLE IF NOT EXISTS quote_recipients (
   revoked_at TEXT, last_sent_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`;
 const TRACKING_SCHEMA = `CREATE TABLE IF NOT EXISTS tracking_events (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, quote_reference TEXT NOT NULL, recipient_id TEXT, event_type TEXT NOT NULL, section TEXT, duration_ms INTEGER, device_hash TEXT, coarse_location TEXT, payload_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`;
-async function database() { const { env } = await import("cloudflare:workers"); if (!env.DB) throw new Error("Delivery storage is unavailable."); return env.DB; }
+async function database() { return getDatabase("Delivery storage is unavailable."); }
 async function ensureDelivery() {
   const db = await database();
   await db.batch([db.prepare(RECIPIENT_SCHEMA), db.prepare(TRACKING_SCHEMA), db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS quote_recipients_token_unique ON quote_recipients (token)"), db.prepare("CREATE INDEX IF NOT EXISTS quote_recipients_quote_idx ON quote_recipients (tenant_id, quote_reference)"), db.prepare("CREATE INDEX IF NOT EXISTS tracking_events_quote_created_idx ON tracking_events (tenant_id, quote_reference, created_at)")]);

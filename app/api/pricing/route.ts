@@ -1,4 +1,4 @@
-import { getChatGPTUser } from "../../chatgpt-auth";
+import { getCurrentUser } from "../../auth";
 import { listCatalogueItems } from "../../../db/catalogue-store";
 import { getRuleWorkspace } from "../../../db/pricing-rule-store";
 import { money, price, type RuleSet } from "../../../packages/pricing-engine/src/index";
@@ -17,8 +17,8 @@ type PreviewBody = {
 };
 
 export async function POST(request: Request) {
-  const user = await getChatGPTUser();
-  if (!user) return Response.json({ error: "Sign in with ChatGPT to price quotes." }, { status: 401 });
+  const user = await getCurrentUser();
+  if (!user) return Response.json({ error: "Sign in to QuoteBench to price quotes." }, { status: 401 });
   try {
     const context = await requireWorkspaceContext(user, ["owner", "admin", "quoter"]);
     const body = (await request.json()) as PreviewBody;

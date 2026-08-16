@@ -1,3 +1,4 @@
+import { getDatabase } from "./database.ts";
 export type ClientRecord = {
   id: string;
   name: string;
@@ -23,9 +24,7 @@ const CLIENTS_SCHEMA = `CREATE TABLE IF NOT EXISTS clients (
 )`;
 
 async function database() {
-  const { env } = await import("cloudflare:workers");
-  if (!env.DB) throw new Error("Client storage is unavailable");
-  return env.DB;
+  return getDatabase("Client storage is unavailable");
 }
 
 async function ensureClients() {

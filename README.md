@@ -13,8 +13,8 @@ This repository contains the governed vertical slice and its first durable workf
 - role-based discount caps, minimum fees, recurrence separation and margin controls
 - a responsive quote-building application with explanation traces
 - catalogue, pricing governance, activity and client-document views
-- ChatGPT identity-aware write boundaries for workspace users
-- tenant-scoped D1 quote records, immutable pricing snapshots and lifecycle audit events
+- Neon Auth email/password sessions with same-origin server proxying
+- tenant-scoped Neon Postgres quote records through Cloudflare Hyperdrive, immutable pricing snapshots and lifecycle audit events
 - server-side repricing before Draft or Ready records are accepted
 - recipient-specific high-entropy links, resend and revocation controls
 - scanner suppression, three-second qualified views and section dwell analytics
@@ -29,14 +29,14 @@ This repository contains the governed vertical slice and its first durable workf
 - deterministic engine and rendered-application tests
 - authenticated multi-workspace tenancy with server-side membership enforcement
 - hashed-token and API-key rate limiting, privacy controls and security audit events
-- exponential webhook recovery, scheduled retention and full tenant purge across D1 and R2
+- exponential webhook recovery, scheduled retention and full tenant purge across Postgres and R2
 - deployment security headers, health checks and GitHub CI release gates
 - a multi-page proposal studio with reusable templates, flexible page formats and structured content, proof, media, pricing, option, term and acceptance blocks
 - a governed service catalogue with tenant-defined categories and subcategories, proposal-type availability and defaults, quote-level service toggles, and snapshotted service schedules and terms
 
 Provider-backed transactional email and Stripe Checkout activate when their production credentials are supplied. Without them, secure recipient links, delivery governance, all acceptance workflows, metering, exports and the rest of the application remain runnable. The operator dashboard is sign-in gated and requires an authorised email SHA-256 digest in `OPERATOR_EMAIL_SHA256`, while recipient proposals are protected by distinct high-entropy tokens.
 
-Production: https://quotebench-app.doh87.chatgpt.site
+Cloudflare production is promoted from a pinned public GitHub commit after verification and approval. Environment URLs are held in GitHub Environment variables so source does not drift from deployment configuration.
 
 The application presentation layer adapts the supplied Horizon UI Tailwind React Next.js visual system. Attribution and licence terms are retained in `THIRD_PARTY_NOTICES.md`.
 
@@ -65,8 +65,8 @@ npm test
 
 ```text
 app/                         Vinext and Next.js application
-db/                          D1 schema and tenant-scoped quote store
-drizzle/                     generated, reviewable database migration
+db/                          Postgres/D1-compatible tenant-scoped data boundary
+deployment/                  non-secret four-environment topology
 packages/pricing-engine/     pure pricing domain package
 tests/                       engine and rendered-application checks
 ```
@@ -74,6 +74,8 @@ tests/                       engine and rendered-application checks
 The project constitution is recorded in `CLAUDE.md`. The governing rule is that monetary values displayed to a user or rendered in a document originate from the pricing engine and cannot be manually overwritten.
 
 The implemented enterprise control set, platform boundaries and production release gates are recorded in `docs/enterprise-readiness.md`.
+
+The Cloudflare + Neon topology, authentication boundary, promotion gates and rollback procedure are recorded in `docs/cloudflare-neon-production.md`.
 
 ## Deployment boundaries
 

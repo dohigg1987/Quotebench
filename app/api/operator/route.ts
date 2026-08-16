@@ -1,4 +1,4 @@
-import { getChatGPTUser } from "../../chatgpt-auth";
+import { getCurrentUser } from "../../auth";
 import { requireOperator } from "../../../db/workspace-store";
 import { addOperatorNote, clearEntitlementOverride, createCustomerBillingPortal, exportPlatformCustomer, getPlatformCustomer, getPlatformOverview, invitePlatformMember, setEntitlementOverride, setTenantStatus, updateCustomerProfile, updatePlatformMember } from "../../../db/operator-store";
 import { isPlanName } from "../../../db/plans";
@@ -6,7 +6,7 @@ import { isPlanName } from "../../../db/plans";
 export const dynamic = "force-dynamic";
 
 async function operator() {
-  const user = await getChatGPTUser();
+  const user = await getCurrentUser();
   if (!user) throw new Error("unauthenticated");
   await requireOperator(user); return user;
 }

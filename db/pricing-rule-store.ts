@@ -1,3 +1,4 @@
+import { getDatabase } from "./database.ts";
 import { defaultRuleSet } from "../app/demo-data";
 import type { RuleSet } from "../packages/pricing-engine/src/index";
 
@@ -14,9 +15,7 @@ const RULES_SCHEMA = `CREATE TABLE IF NOT EXISTS pricing_rule_sets (
 )`;
 
 async function database() {
-  const { env } = await import("cloudflare:workers");
-  if (!env.DB) throw new Error("Pricing rule storage is unavailable");
-  return env.DB;
+  return getDatabase("Pricing rule storage is unavailable");
 }
 
 async function ensureRules(tenantId: string) {

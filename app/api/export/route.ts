@@ -1,4 +1,4 @@
-import { getChatGPTUser } from "../../chatgpt-auth";
+import { getCurrentUser } from "../../auth";
 import { listCatalogueItems } from "../../../db/catalogue-store";
 import { listClients } from "../../../db/client-store";
 import { getRuleWorkspace } from "../../../db/pricing-rule-store";
@@ -21,8 +21,8 @@ function toCsv(rows: Array<Record<string, unknown>>) {
 }
 
 export async function GET(request: Request) {
-  const user = await getChatGPTUser();
-  if (!user) return Response.json({ error: "Sign in with ChatGPT to export workspace data." }, { status: 401 });
+  const user = await getCurrentUser();
+  if (!user) return Response.json({ error: "Sign in to QuoteBench to export workspace data." }, { status: 401 });
   let context;
   try { context = await requireWorkspaceContext(user, ["owner"]); } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "forbidden" }, { status: 403 }); }
   const url = new URL(request.url);

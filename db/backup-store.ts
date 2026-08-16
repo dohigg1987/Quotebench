@@ -1,3 +1,5 @@
+import { getDatabase } from "./database.ts";
+
 const ARCHIVE_TABLES = [
   "api_access_log",
   "api_keys",
@@ -49,18 +51,17 @@ async function digest(value: string) {
 }
 
 export async function exportTenantArchive(tenantId: string): Promise<TenantArchive> {
-  const { env } = await import("cloudflare:workers");
-  if (!env.DB) throw new Error("Backup storage is unavailable.");
-  const existing = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table'").all<{ name: string }>();
+  const db = await getDatabase("Backup storage is unavailable.");
+  const existing = await db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all<{ name: string }>();
   const available = new Set(existing.results.map((row) => row.name));
   const tenant = available.has("tenants")
-    ? await env.DB.prepare("SELECT * FROM tenants WHERE id=?").bind(tenantId).first<Record<string, unknown>>()
+    ? await db.prepare("SELECT * FROM tenants WHERE id=?").bind(tenantId).first<Record<string, unknown>>()
     : null;
   if (!tenant) throw new Error("Tenant could not be archived.");
   const tables: TenantArchive["tables"] = {};
   for (const table of ARCHIVE_TABLES) {
     if (!available.has(table)) continue;
-    const rows = await env.DB.prepare(`SELECT * FROM ${table} WHERE tenant_id=?`).bind(tenantId).all<Record<string, unknown>>();
+    const rows = await db.prepare(`SELECT * FROM ${table} WHERE tenant_id=?`).bind(tenantId).all<Record<string, unknown>>();
     tables[table] = rows.results;
   }
   const body = {

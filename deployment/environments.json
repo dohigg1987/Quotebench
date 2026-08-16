@@ -1,0 +1,22 @@
+{
+  "dev": {
+    "worker": "quotebench-dev",
+    "r2Bucket": "quotebench-dev-files",
+    "pdfQueue": "quotebench-dev-pdf"
+  },
+  "test": {
+    "worker": "quotebench-test",
+    "r2Bucket": "quotebench-test-files",
+    "pdfQueue": "quotebench-test-pdf"
+  },
+  "preprod": {
+    "worker": "quotebench-preprod",
+    "r2Bucket": "quotebench-preprod-files",
+    "pdfQueue": "quotebench-preprod-pdf"
+  },
+  "production": {
+    "worker": "quotebench-production",
+    "r2Bucket": "quotebench-production-files",
+    "pdfQueue": "quotebench-production-pdf"
+  }
+}

@@ -1,3 +1,4 @@
+import { getDatabase } from "./database.ts";
 import { PLAN_LIMITS, isPlanName, mostGenerousPlan, type PlanName } from "./plans";
 
 const CODE_SCHEMA = `CREATE TABLE IF NOT EXISTS deal_codes (code_hash TEXT PRIMARY KEY,tier INTEGER NOT NULL,campaign TEXT NOT NULL,redeemed_tenant_id TEXT,redeemed_at TEXT)`;
@@ -8,7 +9,7 @@ const OVERRIDE_SCHEMA = `CREATE TABLE IF NOT EXISTS tenant_entitlement_overrides
 const INVOICE_SCHEMA = `CREATE TABLE IF NOT EXISTS billing_invoices (id TEXT PRIMARY KEY,tenant_id TEXT NOT NULL,stripe_customer_id TEXT,stripe_invoice_id TEXT NOT NULL,number TEXT,status TEXT NOT NULL,currency TEXT NOT NULL DEFAULT 'gbp',subtotal_minor INTEGER NOT NULL DEFAULT 0,tax_minor INTEGER NOT NULL DEFAULT 0,total_minor INTEGER NOT NULL DEFAULT 0,amount_paid_minor INTEGER NOT NULL DEFAULT 0,amount_due_minor INTEGER NOT NULL DEFAULT 0,hosted_invoice_url TEXT,invoice_pdf_url TEXT,period_start TEXT,period_end TEXT,due_at TEXT,paid_at TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`;
 const BILLING_EVENT_SCHEMA = `CREATE TABLE IF NOT EXISTS billing_events (id TEXT PRIMARY KEY,tenant_id TEXT NOT NULL,provider_event_id TEXT NOT NULL,event_type TEXT NOT NULL,outcome TEXT NOT NULL,payload_json TEXT NOT NULL DEFAULT '{}',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`;
 
-async function database() { const { env } = await import("cloudflare:workers"); if (!env.DB) throw new Error("Billing storage is unavailable."); return env.DB; }
+async function database() { return getDatabase("Billing storage is unavailable."); }
 async function hash(value: string) { const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value.trim().toUpperCase())); return Array.from(new Uint8Array(bytes), byte => byte.toString(16).padStart(2, "0")).join(""); }
 
 export async function ensureBillingSchema() {
