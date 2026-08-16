@@ -24,7 +24,7 @@ type SaveQuoteBody = {
   currency?: string;
   regionCode?: string;
   asOfDate?: string;
-  document?: { title?: string; introduction?: string; scopeHeading?: string; brandName?: string; brandInitials?: string; proposalTypeId?:string; depositMinor?:number; options?:Array<{id:string;label:string}>; pages?:DocumentPage[] };
+  document?: { title?: string; introduction?: string; scopeHeading?: string; brandName?: string; brandInitials?: string; proposalTypeId?:string; templateId?:string; depositMinor?:number; options?:Array<{id:string;label:string}>; pages?:DocumentPage[] };
 };
 
 function unauthorised() {
@@ -82,6 +82,7 @@ export async function POST(request: Request) {
       brandName: body.document?.brandName?.trim() || "Finance Advisory Partners",
       brandInitials: body.document?.brandInitials?.trim().slice(0, 4).toUpperCase() || "FAP",
       proposalTypeId:body.document?.proposalTypeId?.trim().slice(0,80)||undefined,
+      templateId:body.document?.templateId?.trim().slice(0,160)||undefined,
       depositMinor: Math.max(0,Math.round(Number(body.document?.depositMinor??0))),
       options:(body.document?.options??[]).slice(0,12).map(option=>({id:String(option.id||crypto.randomUUID()),label:String(option.label??"").trim().slice(0,160)})).filter(option=>option.label),
       pages:normaliseProposalPages(body.document?.pages),

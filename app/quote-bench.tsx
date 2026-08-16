@@ -69,7 +69,7 @@ type SavedQuote = {
 type EditableQuote = SavedQuote & {
   lines: SelectedLine[];
   answers: { values?: Record<string, string>; complexity?: string; turnaround?: string; quoteDiscount?: number; regionCode?:string; asOfDate?:string };
-  document: { title: string; introduction: string; scopeHeading: string; brandName?: string; brandInitials?: string; proposalTypeId?:string; depositMinor?: number; options?: Array<{ id: string; label: string }>; pages?:DocumentPage[] };
+  document: { title: string; introduction: string; scopeHeading: string; brandName?: string; brandInitials?: string; proposalTypeId?:string; templateId?:string; depositMinor?: number; options?: Array<{ id: string; label: string }>; pages?:DocumentPage[] };
   revisionOf: string | null;
 };
 type SavedEvent = {
@@ -100,6 +100,18 @@ function formatMoney(value: number, currency = "GBP") {
     currency,
     minimumFractionDigits: value % 100 === 0 ? 0 : 2,
   }).format(value / 100);
+}
+
+function cloneTemplatePages(template: DocumentTemplate) {
+  return template.pages.map((page) => ({
+    ...page,
+    id: crypto.randomUUID(),
+    blocks: page.blocks.map((block) => ({
+      ...block,
+      id: crypto.randomUUID(),
+      items: block.items?.map((item) => ({ ...item, id: crypto.randomUUID() })),
+    })),
+  }));
 }
 
 function Status({ children }: { children: string }) {
@@ -175,6 +187,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
   const [brandName, setBrandName] = useState(initialQuote?.document.brandName ?? "Finance Advisory Partners");
   const [brandInitials, setBrandInitials] = useState(initialQuote?.document.brandInitials ?? "FAP");
   const [proposalTypeId,setProposalTypeId]=useState(initialQuote?.document.proposalTypeId??proposalTypes.find(type=>type.active)?.id??"");
+  const [selectedTemplateId,setSelectedTemplateId]=useState(initialQuote?.document.templateId??"");
   const [deposit, setDeposit] = useState(String((initialQuote?.document.depositMinor ?? 0) / 100));
   const [proposalOptions, setProposalOptions] = useState<Array<{ id: string; label: string }>>(initialQuote?.document.options ?? []);
   const [proposalPages,setProposalPages]=useState<DocumentPage[]>(initialQuote?.document.pages??[{id:crypto.randomUUID(),title:"Overview and investment",format:"standard",background:"plain",blocks:[{id:crypto.randomUUID(),type:"text",eyebrow:"Overview",title:"Our proposal",content:initialQuote?.document.introduction??"Describe the client context, desired outcomes and the value of the proposed approach.",enabled:true},{id:crypto.randomUUID(),type:"feature_grid",title:"What is included",layout:"cards",columns:3,enabled:true,items:[{id:crypto.randomUUID(),title:"Outcome",content:"Describe a measurable outcome."},{id:crypto.randomUUID(),title:"Approach",content:"Explain how the work will be delivered."},{id:crypto.randomUUID(),title:"Confidence",content:"Add proof, governance or assurance."}]},{id:crypto.randomUUID(),type:"pricing_table",title:"Scope and investment",display:"full",locked:true,enabled:true},{id:crypto.randomUUID(),type:"terms",title:"Commercial terms",content:"This proposal is valid until the stated expiry date. Fees exclude VAT unless specified.",locked:true,enabled:true},{id:crypto.randomUUID(),type:"signature",title:"Acceptance",content:"The recipient can formally accept or decline this proposal.",locked:true,enabled:true}]}]);
@@ -185,6 +198,9 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
   });
   const [quoteDiscount, setQuoteDiscount] = useState(initialQuote?.answers.quoteDiscount ?? 0);
   const [pickerOpen, setPickerOpen] = useState(true);
+  const [builderStep, setBuilderStep] = useState<"commercial" | "proposal">("commercial");
+  const [openServiceCategories, setOpenServiceCategories] = useState<Record<string, boolean>>({});
+  const [openServiceSubgroups, setOpenServiceSubgroups] = useState<Record<string, boolean>>({});
   const [explainLine, setExplainLine] = useState<string | null>(null);
   const [preview, setPreview] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -207,8 +223,19 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
   }, [preview]);
 
   useEffect(() => {
-    fetch(hasSaved?`/api/documents?reference=${encodeURIComponent(reference)}`:"/api/documents", { cache: "no-store" }).then(async (response) => (await response.json()) as { files?: QuoteFile[];templates?:DocumentTemplate[] }).then((payload) => {setQuoteFiles(payload.files ?? []);setProposalTemplates(payload.templates??[]);}).catch(() => undefined);
-  }, [hasSaved, reference]);
+    fetch(hasSaved?`/api/documents?reference=${encodeURIComponent(reference)}`:"/api/documents", { cache: "no-store" }).then(async (response) => (await response.json()) as { files?: QuoteFile[];templates?:DocumentTemplate[] }).then((payload) => {
+      const templates = payload.templates ?? [];
+      setQuoteFiles(payload.files ?? []);
+      setProposalTemplates(templates);
+      if (!initialQuote) setSelectedTemplateId((current) => {
+        if (current) return current;
+        const standard = templates.find((template) => template.isDefault) ?? templates[0];
+        if (!standard) return current;
+        setProposalPages(cloneTemplatePages(standard));
+        return standard.id;
+      });
+    }).catch(() => undefined);
+  }, [hasSaved, initialQuote, reference]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -250,7 +277,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
       fetch("/api/quotes", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ reference, clientId, clientName, contactName, contactEmail, validUntil, status: lifecycleStatus === "Ready" ? "Ready" : "Draft", answers, quoteDiscount, lines, currency:quoteCurrency,regionCode,asOfDate, document: { title: proposalTitle, introduction: proposalIntroduction, scopeHeading, brandName, brandInitials, proposalTypeId, depositMinor: Math.max(0, Math.round(Number(deposit || 0) * 100)), options: proposalOptions.filter((option) => option.label.trim()), pages:proposalPages } }),
+        body: JSON.stringify({ reference, clientId, clientName, contactName, contactEmail, validUntil, status: lifecycleStatus === "Ready" ? "Ready" : "Draft", answers, quoteDiscount, lines, currency:quoteCurrency,regionCode,asOfDate, document: { title: proposalTitle, introduction: proposalIntroduction, scopeHeading, brandName, brandInitials, proposalTypeId, templateId:selectedTemplateId || undefined, depositMinor: Math.max(0, Math.round(Number(deposit || 0) * 100)), options: proposalOptions.filter((option) => option.label.trim()), pages:proposalPages } }),
         signal: controller.signal,
       })
         .then((response) => {
@@ -266,7 +293,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [answers, asOfDate, brandInitials, brandName, clientId, clientName, contactEmail, contactName, deposit, hasSaved, lifecycleStatus, lines, locked, proposalIntroduction, proposalOptions, proposalPages, proposalTitle, proposalTypeId, quoteCurrency, quoteDiscount, reference, regionCode, scopeHeading, validUntil]);
+  }, [answers, asOfDate, brandInitials, brandName, clientId, clientName, contactEmail, contactName, deposit, hasSaved, lifecycleStatus, lines, locked, proposalIntroduction, proposalOptions, proposalPages, proposalTitle, proposalTypeId, quoteCurrency, quoteDiscount, reference, regionCode, scopeHeading, selectedTemplateId, validUntil]);
 
   function updateQuantity(itemId: string, value: number) {
     setLines((current) => current.map((line) => line.itemId === itemId ? { ...line, quantity: value } : line));
@@ -290,6 +317,14 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
       const defaults=eligible.filter(item=>item.defaultProposalTypeIds?.includes(nextTypeId)&&!retainedIds.has(item.id)).map(item=>({itemId:item.id,quantity:item.minQuantity??1,discount:0}));
       return [...retained,...defaults];
     });
+  }
+
+  function selectProposalTemplate(templateId: string) {
+    const template = proposalTemplates.find((item) => item.id === templateId);
+    setSelectedTemplateId(templateId);
+    if (!template) return;
+    setProposalPages(cloneTemplatePages(template));
+    setNotice(`${template.name} applied. This quote now has its own editable copy.`);
   }
 
   const eligibleCatalogue=catalogueItems.filter(item=>!proposalTypeId||!item.proposalTypeIds?.length||item.proposalTypeIds.includes(proposalTypeId));
@@ -317,7 +352,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
           currency:quoteCurrency,
           regionCode,
           asOfDate,
-          document: { title: proposalTitle, introduction: proposalIntroduction, scopeHeading, brandName, brandInitials, proposalTypeId, depositMinor: Math.max(0, Math.round(Number(deposit || 0) * 100)), options: proposalOptions.filter((option) => option.label.trim()), pages:proposalPages },
+          document: { title: proposalTitle, introduction: proposalIntroduction, scopeHeading, brandName, brandInitials, proposalTypeId, templateId:selectedTemplateId || undefined, depositMinor: Math.max(0, Math.round(Number(deposit || 0) * 100)), options: proposalOptions.filter((option) => option.label.trim()), pages:proposalPages },
         }),
       });
       const payload = (await response.json()) as { error?: string };
@@ -452,6 +487,13 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
       {locked && <div className="locked-panel"><strong>Commercial snapshot locked</strong><span>{lifecycleStatus === "Accepted" ? "This accepted version and its evidence are permanently immutable." : "This issued version is immutable. Create a revision to change scope, pricing or proposal content."}</span>{initialQuote?.revisionOf && <small>Revision of {initialQuote.revisionOf}</small>}</div>}
       {sharePath && <div className="share-panel"><div><strong>Recipient link</strong><p>This tokenised link provides the governed client document and formal acceptance control.</p></div><code>{sharePath}</code><a className="button secondary" href={sharePath} target="_blank" rel="noreferrer">Open quote</a></div>}
 
+      <nav className="quote-workflow" aria-label="Quote workflow">
+        <button className={builderStep === "commercial" ? "active" : "complete"} aria-current={builderStep === "commercial" ? "step" : undefined} onClick={() => setBuilderStep("commercial")}><span>1</span><span><strong>Configure quote</strong><small>Client, services and pricing</small></span></button>
+        <button className={builderStep === "proposal" ? "active" : proposalPages.length ? "complete" : ""} aria-current={builderStep === "proposal" ? "step" : undefined} onClick={() => setBuilderStep("proposal")}><span>2</span><span><strong>Proposal design</strong><small>Template, pages and content</small></span></button>
+        <button disabled={!priced} onClick={() => priced && setPreview(true)}><span>3</span><span><strong>Review and issue</strong><small>Preview the client experience</small></span></button>
+      </nav>
+
+      {builderStep === "commercial" ? (
       <div className="builder-grid">
         <div className="builder-workspace">
           <section className="section-block client-block">
@@ -487,7 +529,33 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
               {pickerOpen && (
                 <div className="service-toggle-picker">
                   <div className="service-toggle-heading"><div><strong>Services available for this proposal type</strong><p>Default services are preselected but every service remains under quote-level control.</p></div><button aria-label="Close service selector" onClick={() => setPickerOpen(false)}>×</button></div>
-                  {serviceGroups.map(group=><section key={group.categoryId}><h3>{categoryLabel(group.categoryId)}</h3>{group.subgroups.map(subgroup=><div key={subgroup.subcategoryId||"other"}><h4>{categoryLabel(subgroup.subcategoryId)||"Other"}</h4>{subgroup.items.map(item=>{const selected=lines.some(line=>line.itemId===item.id);return <label className={selected?"selected":""} key={item.id}><input type="checkbox" checked={selected} disabled={locked} onChange={()=>toggleItem(item.id)}/><span className="service-switch" aria-hidden="true"><i/></span><span><strong>{item.name}</strong><small>{item.description||`${item.pricingBasis.replace("_"," ")} · ${labels[item.recurrence]}`}</small><em>{labels[item.recurrence]} · {item.bundleItemIds?.length?`${item.bundleItemIds.length} bundled components`:item.optionalUpgradeItemIds?.length?`${item.optionalUpgradeItemIds.length} optional upgrades`:item.serviceSchedule?"Schedule included":"No schedule"}</em></span><b>{item.basePriceMinor?formatMoney(item.basePriceMinor,item.baseCurrency):item.pricingBasis.replace("_"," ")}</b></label>})}</div>)}</section>)}
+                  {serviceGroups.map((group, groupIndex) => {
+                    const categoryOpen = openServiceCategories[group.categoryId] ?? groupIndex === 0;
+                    const categoryItemIds = group.subgroups.flatMap((subgroup) => subgroup.items.map((item) => item.id));
+                    const categorySelected = lines.filter((line) => categoryItemIds.includes(line.itemId)).length;
+                    const categoryPanelId = `service-category-${group.categoryId}`;
+                    return <section className="service-category-accordion" key={group.categoryId}>
+                      <button className="service-accordion-trigger" aria-expanded={categoryOpen} aria-controls={categoryPanelId} onClick={() => setOpenServiceCategories(() => ({ ...Object.fromEntries(serviceGroups.map((entry) => [entry.categoryId, false])), [group.categoryId]: !categoryOpen }))}>
+                        <span><strong>{categoryLabel(group.categoryId)}</strong><small>{group.subgroups.length} {group.subgroups.length === 1 ? "subcategory" : "subcategories"}</small></span>
+                        <span><b>{categorySelected}</b> of {categoryItemIds.length} selected <i aria-hidden="true">⌄</i></span>
+                      </button>
+                      {categoryOpen && <div id={categoryPanelId} className="service-category-panel">
+                        {group.subgroups.map((subgroup, subgroupIndex) => {
+                          const subgroupId = subgroup.subcategoryId || "other";
+                          const subgroupKey = `${group.categoryId}:${subgroupId}`;
+                          const subgroupOpen = openServiceSubgroups[subgroupKey] ?? subgroupIndex === 0;
+                          const subgroupSelected = subgroup.items.filter((item) => lines.some((line) => line.itemId === item.id)).length;
+                          const subgroupPanelId = `service-subcategory-${group.categoryId}-${subgroupId}`;
+                          return <section className="service-subcategory-accordion" key={subgroupId}>
+                            <button className="service-subaccordion-trigger" aria-expanded={subgroupOpen} aria-controls={subgroupPanelId} onClick={() => setOpenServiceSubgroups((current) => ({ ...current, ...Object.fromEntries(group.subgroups.map((entry) => [`${group.categoryId}:${entry.subcategoryId || "other"}`, false])), [subgroupKey]: !subgroupOpen }))}>
+                              <span>{categoryLabel(subgroup.subcategoryId) || "Other"}</span><span>{subgroupSelected}/{subgroup.items.length}<i aria-hidden="true">⌄</i></span>
+                            </button>
+                            {subgroupOpen && <div id={subgroupPanelId}>{subgroup.items.map(item=>{const selected=lines.some(line=>line.itemId===item.id);return <label className={selected?"selected":""} key={item.id}><input type="checkbox" checked={selected} disabled={locked} onChange={()=>toggleItem(item.id)}/><span className="service-switch" aria-hidden="true"><i/></span><span><strong>{item.name}</strong><small>{item.description||`${item.pricingBasis.replace("_"," ")} · ${labels[item.recurrence]}`}</small><em>{labels[item.recurrence]} · {item.bundleItemIds?.length?`${item.bundleItemIds.length} bundled components`:item.optionalUpgradeItemIds?.length?`${item.optionalUpgradeItemIds.length} optional upgrades`:item.serviceSchedule?"Schedule included":"No schedule"}</em></span><b>{item.basePriceMinor?formatMoney(item.basePriceMinor,item.baseCurrency):item.pricingBasis.replace("_"," ")}</b></label>})}</div>}
+                          </section>;
+                        })}
+                      </div>}
+                    </section>;
+                  })}
                 </div>
               )}
 
@@ -533,21 +601,10 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
             </div>
           </section>
 
-          <section className="section-block document-content-block">
-            <div className="section-number">04</div>
-            <div className="section-content">
-              <div className="section-title-row"><div><h2>Proposal editor</h2><p>Compose pages, formats and reusable content blocks without altering governed commercial values.</p></div><span className="complete-mark">{proposalPages.length} pages</span></div>
-              <div className="document-fields">
-                <label><span>Proposal title</span><input value={proposalTitle} onChange={(event) => setProposalTitle(event.target.value)} /></label>
-                <div className="brand-fields"><label><span>Brand name</span><input value={brandName} onChange={(event) => setBrandName(event.target.value)} /></label><label><span>Initials</span><input maxLength={4} value={brandInitials} onChange={(event) => setBrandInitials(event.target.value.toUpperCase())} /></label></div>
-                <label><span>Deposit stated, £, optional</span><input type="number" min="0" step="0.01" value={deposit} onChange={(event) => setDeposit(event.target.value)} /></label>
-                <label><span>Start from a reusable template</span><select defaultValue="" disabled={locked} onChange={event=>{const template=proposalTemplates.find(item=>item.id===event.target.value);if(template)setProposalPages(template.pages.map(page=>({...page,id:crypto.randomUUID(),blocks:page.blocks.map(block=>({...block,id:crypto.randomUUID(),items:block.items?.map(item=>({...item,id:crypto.randomUUID()}))}))})));event.target.value="";}}><option value="">Choose a template…</option>{proposalTemplates.map(template=><option key={template.id} value={template.id}>{template.name}</option>)}</select></label>
-                <div className="proposal-options-editor"><span>Acceptance options, optional</span>{proposalOptions.map((option, index) => <div key={option.id}><input value={option.label} placeholder={`Option ${index + 1}`} onChange={(event) => setProposalOptions((current) => current.map((entry) => entry.id === option.id ? { ...entry, label: event.target.value } : entry))} /><button className="text-button danger-text" onClick={() => setProposalOptions((current) => current.filter((entry) => entry.id !== option.id))}>Remove</button></div>)}<button className="text-button" onClick={() => setProposalOptions((current) => [...current, { id: crypto.randomUUID(), label: "" }])}>+ Add option</button></div>
-              </div>
-              <ProposalEditor value={proposalPages} onChange={setProposalPages} onUploadImage={uploadProposalImage} readOnly={locked}/>
-              <div className="attachment-panel"><div><strong>Supporting files</strong><p>Attachments are stored securely and appear on the recipient page for this quote version.</p></div><label className={`button secondary ${hasSaved ? "" : "disabled-upload"}`}>Attach file<input type="file" disabled={!hasSaved} accept=".pdf,.png,.jpg,.jpeg,.txt" onChange={(event) => void uploadAttachment(event.target.files?.[0])} /></label><button className="button secondary" disabled={!hasSaved} onClick={requestPdf}>Generate PDF</button></div>{quoteFiles.length > 0 && <div className="quote-files">{quoteFiles.map((file) => <a key={file.id} href={`/api/files/${file.id}`} target="_blank" rel="noreferrer"><span>{file.kind === "pdf" ? "PDF" : "FILE"}</span><strong>{file.filename}</strong><small>{Math.ceil(file.sizeBytes / 1024)} KB</small></a>)}</div>}{pdfState && (pdfState.startsWith("PDF ready|") ? <a className="pdf-ready-link" href={pdfState.split("|")[1]} target="_blank" rel="noreferrer">PDF ready, download now</a> : <p className="pdf-state">{pdfState}</p>)}
-            </div>
-          </section>
+          <footer className="commercial-step-footer">
+            <div><strong>Commercial setup complete</strong><p>Continue to apply the standard proposal template and tailor the client document.</p></div>
+            <button className="button primary" onClick={() => setBuilderStep("proposal")}>Continue to proposal design →</button>
+          </footer>
         </div>
 
         <QuoteSummary
@@ -560,6 +617,43 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
           onPreview={() => priced && setPreview(true)}
         />
       </div>
+      ) : (
+        <section className="proposal-design-page">
+          <header className="proposal-design-header">
+            <div><p className="eyebrow">Proposal design workspace</p><h2>Shape the client document</h2><p>The selected standard template is copied into this quote. Changes here do not alter the reusable master template or governed pricing.</p></div>
+            <div><span className="proposal-page-count"><strong>{proposalPages.length}</strong><small>Pages</small></span><button className="button secondary" onClick={() => setBuilderStep("commercial")}>← Commercial setup</button><button className="button primary" disabled={!priced} onClick={() => priced && setPreview(true)}>Preview proposal</button></div>
+          </header>
+
+          <section className="proposal-template-card">
+            <div className="template-card-copy"><span className="template-card-icon" aria-hidden="true">T</span><div><strong>Standard template for this quote</strong><p>Applying a template creates an editable quote-specific copy. Add, remove and reorder pages without changing the master.</p></div></div>
+            <label><span>Selected template</span><select value={selectedTemplateId} disabled={locked} onChange={(event) => selectProposalTemplate(event.target.value)}><option value="">Custom proposal</option>{proposalTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}{template.isDefault ? " · Default" : ""}</option>)}</select></label>
+          </section>
+
+          <section className="proposal-settings-card">
+            <div className="proposal-settings-heading"><div><strong>Proposal details</strong><p>These values are specific to the current quote.</p></div><span>{selectedTemplateId ? "Template linked" : "Custom pages"}</span></div>
+            <div className="document-fields proposal-design-fields">
+              <label><span>Proposal title</span><input value={proposalTitle} disabled={locked} onChange={(event) => setProposalTitle(event.target.value)} /></label>
+              <div className="brand-fields"><label><span>Brand name</span><input value={brandName} disabled={locked} onChange={(event) => setBrandName(event.target.value)} /></label><label><span>Initials</span><input maxLength={4} value={brandInitials} disabled={locked} onChange={(event) => setBrandInitials(event.target.value.toUpperCase())} /></label></div>
+              <label><span>Deposit stated, £, optional</span><input type="number" min="0" step="0.01" value={deposit} disabled={locked} onChange={(event) => setDeposit(event.target.value)} /></label>
+              <div className="proposal-options-editor"><span>Acceptance options, optional</span>{proposalOptions.map((option, index) => <div key={option.id}><input value={option.label} disabled={locked} placeholder={`Option ${index + 1}`} onChange={(event) => setProposalOptions((current) => current.map((entry) => entry.id === option.id ? { ...entry, label: event.target.value } : entry))} /><button className="text-button danger-text" disabled={locked} onClick={() => setProposalOptions((current) => current.filter((entry) => entry.id !== option.id))}>Remove</button></div>)}<button className="text-button" disabled={locked} onClick={() => setProposalOptions((current) => [...current, { id: crypto.randomUUID(), label: "" }])}>+ Add option</button></div>
+            </div>
+          </section>
+
+          <section className="proposal-design-editor document-content-block">
+            <div className="proposal-editor-heading"><div><strong>Page builder</strong><p>Select a page, edit its blocks, or add content from the library.</p></div><span>Quote-specific copy</span></div>
+            <div className="section-content"><ProposalEditor value={proposalPages} onChange={setProposalPages} onUploadImage={uploadProposalImage} readOnly={locked}/></div>
+          </section>
+
+          <section className="proposal-support-card">
+            <div><strong>Supporting files and output</strong><p>Save the draft before attaching files or generating a governed PDF.</p></div>
+            <div className="proposal-support-actions"><label aria-disabled={!hasSaved} className={`button secondary upload-button ${hasSaved ? "" : "disabled-upload"}`}>Attach file<input type="file" disabled={!hasSaved} accept=".pdf,.png,.jpg,.jpeg,.txt" onChange={(event) => void uploadAttachment(event.target.files?.[0])} /></label><button className="button secondary" disabled={!hasSaved} onClick={requestPdf}>Generate PDF</button></div>
+          </section>
+          {quoteFiles.length > 0 && <div className="quote-files">{quoteFiles.map((file) => <a key={file.id} href={`/api/files/${file.id}`} target="_blank" rel="noreferrer"><span>{file.kind === "pdf" ? "PDF" : "FILE"}</span><strong>{file.filename}</strong><small>{Math.ceil(file.sizeBytes / 1024)} KB</small></a>)}</div>}
+          {pdfState && (pdfState.startsWith("PDF ready|") ? <a className="pdf-ready-link" href={pdfState.split("|")[1]} target="_blank" rel="noreferrer">PDF ready, download now</a> : <p className="pdf-state">{pdfState}</p>)}
+
+          <footer className="proposal-design-footer"><button className="button secondary" onClick={() => setBuilderStep("commercial")}>← Back to commercial setup</button><span>Step 2 of 3 · {proposalPages.length} pages</span><div><button className="button secondary" onClick={() => saveQuote("Draft")} disabled={saving !== null || locked}>{saving === "Draft" ? "Saving…" : "Save draft"}</button><button className="button primary" disabled={!priced} onClick={() => priced && setPreview(true)}>Review proposal →</button></div></footer>
+        </section>
+      )}
     </div>
   );
 }
@@ -571,36 +665,40 @@ function QuoteSummary({ quote, reference, ruleSetVersion, errors, discount, setD
   return (
     <aside className="quote-summary">
       <div className="summary-kicker"><span>Live calculation</span><b>Engine verified</b></div>
-      <h2>Quote summary</h2>
-      <p className="summary-reference">{reference} · Rule set version {ruleSetVersion}</p>
+      <div className="quote-summary-body">
+        <div className="quote-summary-heading">
+          <h2>Quote summary</h2>
+          <p className="summary-reference">{reference} · Rule set version {ruleSetVersion}</p>
+        </div>
 
-      {errors.length > 0 && <div className="error-panel"><strong>Pricing blocked</strong>{errors.map((error) => <span key={error}>{error.replace("pricing.", "").replaceAll("_", " ")}</span>)}</div>}
+        {errors.length > 0 && <div className="error-panel"><strong>Pricing blocked</strong>{errors.map((error) => <span key={error}>{error.replace("pricing.", "").replaceAll("_", " ")}</span>)}</div>}
 
-      <div className="summary-lines">
-        {quote?.lines.map((line) => (
-          <div key={line.lineId}><span>{line.itemName}<small>{line.quantity} × {line.unitLabel}</small></span><strong>{formatMoney(line.finalPriceMinor,quote.currency)}</strong></div>
-        ))}
+        <div className="summary-lines">
+          {quote?.lines.map((line) => (
+            <div key={line.lineId}><span>{line.itemName}<small>{line.quantity} × {line.unitLabel}</small></span><strong>{formatMoney(line.finalPriceMinor,quote.currency)}</strong></div>
+          ))}
+        </div>
+
+        <label className="discount-control">
+          <span><strong>Quote discount</strong><b>{discount}%</b></span>
+          <input type="range" min="0" max="20" step="1" value={discount} onChange={(event) => setDiscount(Number(event.target.value))} />
+          <small>Owner authority: up to 20%</small>
+        </label>
+
+        <div className="totals">
+          <div><span>One-off total</span><strong>{quote ? formatMoney(quote.oneOffSubtotalMinor,quote.currency) : "—"}</strong></div>
+          {recurring.map(([frequency, amount]) => <div key={frequency}><span>{labels[frequency]} recurring</span><strong>{formatMoney(amount,quote?.currency)}</strong></div>)}
+          {recurring.length > 0 && <div className="annualised"><span>Annualised recurring</span><strong>{quote ? formatMoney(quote.recurringAnnualisedMinor,quote.currency) : "—"}</strong></div>}
+          {quote&&quote.taxTotalMinor>0&&<div><span>Tax across displayed periods</span><strong>{formatMoney(quote.taxTotalMinor,quote.currency)}</strong></div>}
+        </div>
+
+        <div className="health-row">
+          <span><i className="health-dot" />Commercial health</span>
+          <strong>{quote?.marginBp === null || quote?.marginBp === undefined ? "Margin incomplete" : `${(quote.marginBp / 100).toFixed(1)}% margin`}</strong>
+        </div>
+        <p className="separation-note">One-off and recurring values remain separate by design.</p>
+        <button className="button preview-button" onClick={onPreview} disabled={!quote}>Open client preview</button>
       </div>
-
-      <label className="discount-control">
-        <span><strong>Quote discount</strong><b>{discount}%</b></span>
-        <input type="range" min="0" max="20" step="1" value={discount} onChange={(event) => setDiscount(Number(event.target.value))} />
-        <small>Owner authority: up to 20%</small>
-      </label>
-
-      <div className="totals">
-        <div><span>One-off total</span><strong>{quote ? formatMoney(quote.oneOffSubtotalMinor,quote.currency) : "—"}</strong></div>
-        {recurring.map(([frequency, amount]) => <div key={frequency}><span>{labels[frequency]} recurring</span><strong>{formatMoney(amount,quote?.currency)}</strong></div>)}
-        {recurring.length > 0 && <div className="annualised"><span>Annualised recurring</span><strong>{quote ? formatMoney(quote.recurringAnnualisedMinor,quote.currency) : "—"}</strong></div>}
-        {quote&&quote.taxTotalMinor>0&&<div><span>Tax across displayed periods</span><strong>{formatMoney(quote.taxTotalMinor,quote.currency)}</strong></div>}
-      </div>
-
-      <div className="health-row">
-        <span><i className="health-dot" />Commercial health</span>
-        <strong>{quote?.marginBp === null || quote?.marginBp === undefined ? "Margin incomplete" : `${(quote.marginBp / 100).toFixed(1)}% margin`}</strong>
-      </div>
-      <p className="separation-note">One-off and recurring values remain separate by design.</p>
-      <button className="button preview-button" onClick={onPreview} disabled={!quote}>Open client preview</button>
     </aside>
   );
 }

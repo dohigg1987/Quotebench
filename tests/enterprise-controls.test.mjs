@@ -79,9 +79,16 @@ test("Proposal studio supports multi-page, multi-format and reusable block compo
   const editor = await source("app/proposal-editor.tsx");
   const recipient = await source("app/q/[token]/page.tsx");
   const quoteBuilder = await source("app/quote-bench.tsx");
+  const quoteRoute = await source("app/api/quotes/route.ts");
   for (const capability of ["Standard page", "Wide page", "Cover page", "Block library", "feature_grid", "timeline", "team", "faq", "pricing_table", "signature"]) assert.match(editor, new RegExp(capability, "i"));
   assert.match(recipient, /quote\.document\.pages/);
-  assert.match(quoteBuilder, /Start from a reusable template/);
+  assert.match(quoteBuilder, /Selected template/);
+  assert.match(quoteBuilder, /quote-workflow/);
+  assert.match(quoteBuilder, /Proposal design workspace/);
+  assert.match(quoteBuilder, /cloneTemplatePages/);
+  assert.match(quoteBuilder, /templateId:selectedTemplateId/);
+  assert.match(quoteBuilder, /Standard template for this quote/);
+  assert.match(quoteRoute, /templateId:body\.document\?\.templateId/);
   assert.doesNotMatch(quoteBuilder, /Consulting rate card/i);
 });
 
@@ -99,6 +106,11 @@ test("Service catalogue supports category hierarchy, proposal types and quote-le
   assert.match(catalogueScreen,/Proposal-type availability/);
   assert.match(quoteBuilder,/toggle each eligible service on or off/i);
   assert.match(quoteBuilder,/defaultProposalTypeIds/);
+  assert.match(quoteBuilder,/service-category-accordion/);
+  assert.match(quoteBuilder,/service-subcategory-accordion/);
+  assert.match(quoteBuilder,/aria-expanded=\{categoryOpen\}/);
+  assert.match(quoteBuilder,/aria-expanded=\{subgroupOpen\}/);
+  assert.match(quoteBuilder,/categorySelected/);
   assert.match(recipient,/Service schedule/);
   assert.match(recipient,/Service terms/);
 });
@@ -130,4 +142,40 @@ test("Enterprise shell groups navigation and contains the quote layout responsiv
   assert.match(css, /\.builder-workspace \{[^}]*overflow:hidden/);
   assert.match(css, /\.line-table \{[^}]*overflow-x:auto/);
   assert.match(css, /@media \(max-width: 1024px\)[\s\S]*transform:translateX\(-105%\)/);
+});
+
+test("Quote summary uses one structural content inset", async () => {
+  const component = await source("app/quote-bench.tsx");
+  const styles = await source("app/globals.css");
+  assert.match(component, /className="summary-kicker"[\s\S]*className="quote-summary-body"[\s\S]*<h2>Quote summary<\/h2>/);
+  assert.match(styles, /\.quote-summary-body\s*\{[^}]*padding:20px/);
+  assert.match(styles, /\.quote-summary h2\s*\{[^}]*margin:0/);
+  assert.doesNotMatch(styles, /\.quote-summary > \*\s*\{/);
+  assert.match(styles, /\.preview-button\s*\{[^}]*width:100%[^}]*margin:10px 0 0/);
+});
+
+test("Horizon UI foundation and governed-content layout are explicit", async () => {
+  const styles = await source("app/globals.css");
+  const engagement = await source("app/engagement-screen.tsx");
+  const notices = await source("THIRD_PARTY_NOTICES.md");
+  for (const token of ["--horizon-brand", "--horizon-navy", "--horizon-canvas", "--horizon-radius"]) assert.match(styles, new RegExp(token));
+  assert.match(styles, /\.engagement-layout\s*\{[^}]*grid-template-columns:minmax\(560px,1\.1fr\) minmax\(360px,\.9fr\)/);
+  assert.match(styles, /@media \(max-width: 1260px\)[\s\S]*\.engagement-layout \{ grid-template-columns:1fr; \}/);
+  for (const element of ["engagement-form-grid", "engagement-content-field", "policy-card", "proposal-scope-grid", "engagement-actions", "engagement-empty-state"]) assert.match(engagement, new RegExp(element));
+  assert.match(notices, /Horizon UI/);
+  assert.match(notices, /MIT License/);
+});
+
+test("Quote-builder internals use container-responsive layouts", async () => {
+  const styles = await source("app/globals.css");
+  assert.match(styles, /\.builder-workspace\s*\{[^}]*container-name:quote-workspace/);
+  assert.match(styles, /\.document-content-block \.section-content\s*\{[^}]*container-name:proposal-editor/);
+  assert.match(styles, /\.service-toggle-picker label\s*\{[^}]*grid-template-columns:35px minmax\(0,1fr\) auto/);
+  assert.match(styles, /@container quote-workspace \(max-width: 760px\)[\s\S]*\.line-row \{ min-width:0;[^}]*grid-template-columns:repeat\(4,minmax\(0,1fr\)\) 50px/);
+  assert.match(styles, /@container proposal-editor \(max-width: 1050px\)[\s\S]*\.proposal-studio \{[^}]*grid-template-columns:150px minmax\(0,1fr\)/);
+  assert.match(styles, /@container proposal-editor \(max-width: 780px\)[\s\S]*\.proposal-studio \{ grid-template-columns:1fr; \}/);
+  assert.match(styles, /@container proposal-editor \(max-width: 560px\)[\s\S]*\.proposal-block-fields \{ grid-template-columns:1fr; \}/);
+  assert.match(styles, /\.proposal-design-editor \.section-content\s*\{[^}]*container-name:proposal-editor/);
+  assert.match(styles, /\.proposal-design-footer\s*\{[^}]*position:sticky/);
+  assert.match(styles, /\.button:disabled,\.proposal-support-actions \.disabled-upload\s*\{[^}]*opacity:1/);
 });
