@@ -27,7 +27,7 @@ for (let attempt = 1; attempt <= 10; attempt += 1) {
     body: body || undefined,
   });
   text = await response.text();
-  if (response.ok || ![403, 404].includes(response.status) || attempt === 10) break;
+  if (response.ok || ![401, 403, 404].includes(response.status) || attempt === 10) break;
   console.warn(`Target version is not globally available yet (${response.status}); retrying ${attempt}/10.`);
   await new Promise((resolve) => setTimeout(resolve, 2_000));
 }
@@ -38,3 +38,4 @@ if (!payload.ok || payload.release?.commit !== commit || payload.release?.cloudf
   throw new Error(`Release identity or assurance mismatch: ${text.slice(0, 1_000)}`);
 }
 console.log(JSON.stringify({ action, ok: true, checks: payload.checks, release: payload.release, migrations: payload.migrations ?? undefined }));
+
