@@ -153,3 +153,14 @@ test("Horizon UI foundation and governed-content layout are explicit", async () 
   assert.match(notices, /Horizon UI/);
   assert.match(notices, /MIT License/);
 });
+
+test("Quote-builder internals use container-responsive layouts", async () => {
+  const styles = await source("app/globals.css");
+  assert.match(styles, /\.builder-workspace\s*\{[^}]*container-name:quote-workspace/);
+  assert.match(styles, /\.document-content-block \.section-content\s*\{[^}]*container-name:proposal-editor/);
+  assert.match(styles, /\.service-toggle-picker label\s*\{[^}]*grid-template-columns:35px minmax\(0,1fr\) auto/);
+  assert.match(styles, /@container quote-workspace \(max-width: 760px\)[\s\S]*\.line-row \{ min-width:0;[^}]*grid-template-columns:repeat\(4,minmax\(0,1fr\)\) 50px/);
+  assert.match(styles, /@container proposal-editor \(max-width: 1050px\)[\s\S]*\.proposal-studio \{[^}]*grid-template-columns:150px minmax\(0,1fr\)/);
+  assert.match(styles, /@container proposal-editor \(max-width: 780px\)[\s\S]*\.proposal-studio \{ grid-template-columns:1fr; \}/);
+  assert.match(styles, /@container proposal-editor \(max-width: 560px\)[\s\S]*\.proposal-block-fields \{ grid-template-columns:1fr; \}/);
+});
