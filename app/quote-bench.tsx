@@ -571,36 +571,40 @@ function QuoteSummary({ quote, reference, ruleSetVersion, errors, discount, setD
   return (
     <aside className="quote-summary">
       <div className="summary-kicker"><span>Live calculation</span><b>Engine verified</b></div>
-      <h2>Quote summary</h2>
-      <p className="summary-reference">{reference} · Rule set version {ruleSetVersion}</p>
+      <div className="quote-summary-body">
+        <div className="quote-summary-heading">
+          <h2>Quote summary</h2>
+          <p className="summary-reference">{reference} · Rule set version {ruleSetVersion}</p>
+        </div>
 
-      {errors.length > 0 && <div className="error-panel"><strong>Pricing blocked</strong>{errors.map((error) => <span key={error}>{error.replace("pricing.", "").replaceAll("_", " ")}</span>)}</div>}
+        {errors.length > 0 && <div className="error-panel"><strong>Pricing blocked</strong>{errors.map((error) => <span key={error}>{error.replace("pricing.", "").replaceAll("_", " ")}</span>)}</div>}
 
-      <div className="summary-lines">
-        {quote?.lines.map((line) => (
-          <div key={line.lineId}><span>{line.itemName}<small>{line.quantity} × {line.unitLabel}</small></span><strong>{formatMoney(line.finalPriceMinor,quote.currency)}</strong></div>
-        ))}
+        <div className="summary-lines">
+          {quote?.lines.map((line) => (
+            <div key={line.lineId}><span>{line.itemName}<small>{line.quantity} × {line.unitLabel}</small></span><strong>{formatMoney(line.finalPriceMinor,quote.currency)}</strong></div>
+          ))}
+        </div>
+
+        <label className="discount-control">
+          <span><strong>Quote discount</strong><b>{discount}%</b></span>
+          <input type="range" min="0" max="20" step="1" value={discount} onChange={(event) => setDiscount(Number(event.target.value))} />
+          <small>Owner authority: up to 20%</small>
+        </label>
+
+        <div className="totals">
+          <div><span>One-off total</span><strong>{quote ? formatMoney(quote.oneOffSubtotalMinor,quote.currency) : "—"}</strong></div>
+          {recurring.map(([frequency, amount]) => <div key={frequency}><span>{labels[frequency]} recurring</span><strong>{formatMoney(amount,quote?.currency)}</strong></div>)}
+          {recurring.length > 0 && <div className="annualised"><span>Annualised recurring</span><strong>{quote ? formatMoney(quote.recurringAnnualisedMinor,quote.currency) : "—"}</strong></div>}
+          {quote&&quote.taxTotalMinor>0&&<div><span>Tax across displayed periods</span><strong>{formatMoney(quote.taxTotalMinor,quote.currency)}</strong></div>}
+        </div>
+
+        <div className="health-row">
+          <span><i className="health-dot" />Commercial health</span>
+          <strong>{quote?.marginBp === null || quote?.marginBp === undefined ? "Margin incomplete" : `${(quote.marginBp / 100).toFixed(1)}% margin`}</strong>
+        </div>
+        <p className="separation-note">One-off and recurring values remain separate by design.</p>
+        <button className="button preview-button" onClick={onPreview} disabled={!quote}>Open client preview</button>
       </div>
-
-      <label className="discount-control">
-        <span><strong>Quote discount</strong><b>{discount}%</b></span>
-        <input type="range" min="0" max="20" step="1" value={discount} onChange={(event) => setDiscount(Number(event.target.value))} />
-        <small>Owner authority: up to 20%</small>
-      </label>
-
-      <div className="totals">
-        <div><span>One-off total</span><strong>{quote ? formatMoney(quote.oneOffSubtotalMinor,quote.currency) : "—"}</strong></div>
-        {recurring.map(([frequency, amount]) => <div key={frequency}><span>{labels[frequency]} recurring</span><strong>{formatMoney(amount,quote?.currency)}</strong></div>)}
-        {recurring.length > 0 && <div className="annualised"><span>Annualised recurring</span><strong>{quote ? formatMoney(quote.recurringAnnualisedMinor,quote.currency) : "—"}</strong></div>}
-        {quote&&quote.taxTotalMinor>0&&<div><span>Tax across displayed periods</span><strong>{formatMoney(quote.taxTotalMinor,quote.currency)}</strong></div>}
-      </div>
-
-      <div className="health-row">
-        <span><i className="health-dot" />Commercial health</span>
-        <strong>{quote?.marginBp === null || quote?.marginBp === undefined ? "Margin incomplete" : `${(quote.marginBp / 100).toFixed(1)}% margin`}</strong>
-      </div>
-      <p className="separation-note">One-off and recurring values remain separate by design.</p>
-      <button className="button preview-button" onClick={onPreview} disabled={!quote}>Open client preview</button>
     </aside>
   );
 }
