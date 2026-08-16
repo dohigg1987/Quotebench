@@ -22,7 +22,9 @@ import BillingScreen from "./billing-screen";
 import OperatorScreen from "./operator-screen";
 import GovernanceScreen from "./governance-screen";
 import ProposalEditor from "./proposal-editor";
+import CatalogueScreen from "./catalogue-screen";
 import type { DocumentPage, DocumentTemplate } from "../db/document-store";
+import type { ProposalType, ServiceCategory } from "../db/catalogue-store";
 
 type Screen = "builder" | "quotes" | "clients" | "catalogue" | "rules" | "activity" | "integrations" | "team" | "usage" | "documents" | "delivery" | "templates" | "billing" | "governance" | "operator";
 type Workspace = { id:string; name:string; currency:string; role:"owner"|"admin"|"quoter" };
@@ -65,7 +67,7 @@ type SavedQuote = {
 type EditableQuote = SavedQuote & {
   lines: SelectedLine[];
   answers: { values?: Record<string, string>; complexity?: string; turnaround?: string; quoteDiscount?: number };
-  document: { title: string; introduction: string; scopeHeading: string; brandName?: string; brandInitials?: string; depositMinor?: number; options?: Array<{ id: string; label: string }>; pages?:DocumentPage[] };
+  document: { title: string; introduction: string; scopeHeading: string; brandName?: string; brandInitials?: string; proposalTypeId?:string; depositMinor?: number; options?: Array<{ id: string; label: string }>; pages?:DocumentPage[] };
   revisionOf: string | null;
 };
 type SavedEvent = {
@@ -87,6 +89,8 @@ const labels: Record<Frequency, string> = {
   quarterly: "Quarterly",
   annually: "Annually",
 };
+const seedCatalogueCategories:ServiceCategory[]=[{id:"advisory",name:"Advisory",parentId:null,sortOrder:10,active:true},{id:"delivery",name:"Delivery",parentId:null,sortOrder:20,active:true},{id:"technology",name:"Technology",parentId:null,sortOrder:30,active:true},{id:"strategy",name:"Strategy",parentId:"advisory",sortOrder:10,active:true},{id:"retained-advice",name:"Retained advice",parentId:"advisory",sortOrder:20,active:true},{id:"implementation",name:"Implementation",parentId:"delivery",sortOrder:10,active:true},{id:"platforms",name:"Platforms and licences",parentId:"technology",sortOrder:10,active:true}];
+const seedProposalTypes:ProposalType[]=[{id:"full-service",name:"Full service",description:"A comprehensive proposal spanning advice, delivery and supporting technology.",active:true},{id:"advisory",name:"Advisory engagement",description:"Advice, workshops and retained expertise.",active:true},{id:"implementation",name:"Implementation programme",description:"Delivery-led mobilisation and execution.",active:true},{id:"managed-service",name:"Managed service",description:"Recurring service and platform commitments.",active:true}];
 
 function formatMoney(value: number, currency = "GBP") {
   return new Intl.NumberFormat("en-GB", {
@@ -105,7 +109,7 @@ function Sidebar({ screen, setScreen, currentUser, entitlement }: { screen: Scre
     { key: "builder", label: "Quote builder", mark: "+" },
     { key: "quotes", label: "Quotes", mark: "Q" },
     { key: "clients", label: "Clients", mark: "L" },
-    { key: "catalogue", label: "Catalogue", mark: "C" },
+    { key: "catalogue", label: "Services", mark: "S" },
     { key: "rules", label: "Pricing rules", mark: "R" },
     { key: "documents", label: "Documents & brand", mark: "D" },
     { key: "templates", label: "Templates & setup", mark: "P" },
@@ -172,7 +176,7 @@ function Topbar({ workspace, workspaces }: { workspace:Workspace|null; workspace
   );
 }
 
-function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, ruleSet, onSaved, onRevised }: { reference: string; initialQuote: EditableQuote | null; clients: ClientRecord[]; catalogueItems: CatalogueItem[]; ruleSet: RuleSet; onSaved: () => void; onRevised: (quote: EditableQuote) => void }) {
+function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalogueCategories, proposalTypes, ruleSet, onSaved, onRevised }: { reference: string; initialQuote: EditableQuote | null; clients: ClientRecord[]; catalogueItems: CatalogueItem[]; catalogueCategories:ServiceCategory[]; proposalTypes:ProposalType[]; ruleSet: RuleSet; onSaved: () => void; onRevised: (quote: EditableQuote) => void }) {
   const [clientId, setClientId] = useState(initialQuote?.clientId ?? "");
   const [clientName, setClientName] = useState(initialQuote?.clientName ?? "Stellar Grid Ltd");
   const [contactName, setContactName] = useState(initialQuote?.contactName ?? "Maya Patel");
@@ -183,20 +187,17 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, ruleSe
   const [scopeHeading] = useState(initialQuote?.document.scopeHeading ?? "A practical route to measurable change");
   const [brandName, setBrandName] = useState(initialQuote?.document.brandName ?? "Finance Advisory Partners");
   const [brandInitials, setBrandInitials] = useState(initialQuote?.document.brandInitials ?? "FAP");
+  const [proposalTypeId,setProposalTypeId]=useState(initialQuote?.document.proposalTypeId??proposalTypes.find(type=>type.active)?.id??"");
   const [deposit, setDeposit] = useState(String((initialQuote?.document.depositMinor ?? 0) / 100));
   const [proposalOptions, setProposalOptions] = useState<Array<{ id: string; label: string }>>(initialQuote?.document.options ?? []);
   const [proposalPages,setProposalPages]=useState<DocumentPage[]>(initialQuote?.document.pages??[{id:crypto.randomUUID(),title:"Overview and investment",format:"standard",background:"plain",blocks:[{id:crypto.randomUUID(),type:"text",eyebrow:"Overview",title:"Our proposal",content:initialQuote?.document.introduction??"Describe the client context, desired outcomes and the value of the proposed approach.",enabled:true},{id:crypto.randomUUID(),type:"feature_grid",title:"What is included",layout:"cards",columns:3,enabled:true,items:[{id:crypto.randomUUID(),title:"Outcome",content:"Describe a measurable outcome."},{id:crypto.randomUUID(),title:"Approach",content:"Explain how the work will be delivered."},{id:crypto.randomUUID(),title:"Confidence",content:"Add proof, governance or assurance."}]},{id:crypto.randomUUID(),type:"pricing_table",title:"Scope and investment",display:"full",locked:true,enabled:true},{id:crypto.randomUUID(),type:"terms",title:"Commercial terms",content:"This proposal is valid until the stated expiry date. Fees exclude VAT unless specified.",locked:true,enabled:true},{id:crypto.randomUUID(),type:"signature",title:"Acceptance",content:"The recipient can formally accept or decline this proposal.",locked:true,enabled:true}]}]);
-  const [lines, setLines] = useState<SelectedLine[]>(initialQuote ? initialQuote.lines : [
-    { itemId: "strategy-workshop", quantity: 3, discount: 0 },
-    { itemId: "advisory-retainer", quantity: 1, discount: 0 },
-    { itemId: "platform-licence", quantity: 25, discount: 0 },
-  ]);
+  const [lines, setLines] = useState<SelectedLine[]>(()=>initialQuote?initialQuote.lines:catalogueItems.filter(item=>item.defaultProposalTypeIds?.includes(proposalTypes.find(type=>type.active)?.id??"")).map(item=>({itemId:item.id,quantity:item.minQuantity??1,discount:0})));
   const [answers, setAnswers] = useState<Record<string, string>>(() => initialQuote?.answers.values ?? {
     complexity: initialQuote?.answers.complexity ?? "standard",
     turnaround: initialQuote?.answers.turnaround ?? "standard",
   });
   const [quoteDiscount, setQuoteDiscount] = useState(initialQuote?.answers.quoteDiscount ?? 0);
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(true);
   const [explainLine, setExplainLine] = useState<string | null>(null);
   const [preview, setPreview] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -262,7 +263,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, ruleSe
       fetch("/api/quotes", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ reference, clientId, clientName, contactName, contactEmail, validUntil, status: lifecycleStatus === "Ready" ? "Ready" : "Draft", answers, quoteDiscount, lines, document: { title: proposalTitle, introduction: proposalIntroduction, scopeHeading, brandName, brandInitials, depositMinor: Math.max(0, Math.round(Number(deposit || 0) * 100)), options: proposalOptions.filter((option) => option.label.trim()), pages:proposalPages } }),
+        body: JSON.stringify({ reference, clientId, clientName, contactName, contactEmail, validUntil, status: lifecycleStatus === "Ready" ? "Ready" : "Draft", answers, quoteDiscount, lines, document: { title: proposalTitle, introduction: proposalIntroduction, scopeHeading, brandName, brandInitials, proposalTypeId, depositMinor: Math.max(0, Math.round(Number(deposit || 0) * 100)), options: proposalOptions.filter((option) => option.label.trim()), pages:proposalPages } }),
         signal: controller.signal,
       })
         .then((response) => {
@@ -278,7 +279,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, ruleSe
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [answers, brandInitials, brandName, clientId, clientName, contactEmail, contactName, deposit, hasSaved, lifecycleStatus, lines, locked, proposalIntroduction, proposalOptions, proposalPages, proposalTitle, quoteDiscount, reference, scopeHeading, validUntil]);
+  }, [answers, brandInitials, brandName, clientId, clientName, contactEmail, contactName, deposit, hasSaved, lifecycleStatus, lines, locked, proposalIntroduction, proposalOptions, proposalPages, proposalTitle, proposalTypeId, quoteDiscount, reference, scopeHeading, validUntil]);
 
   function updateQuantity(itemId: string, value: number) {
     setLines((current) => current.map((line) => line.itemId === itemId ? { ...line, quantity: value } : line));
@@ -291,6 +292,21 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, ruleSe
         : [...current, { itemId, quantity: catalogueItems.find((item) => item.id === itemId)?.minQuantity ?? 1, discount: 0 }],
     );
   }
+
+  function selectProposalType(nextTypeId:string){
+    setProposalTypeId(nextTypeId);
+    setLines(current=>{
+      const eligible=catalogueItems.filter(item=>!item.proposalTypeIds?.length||item.proposalTypeIds.includes(nextTypeId));
+      const retained=current.filter(line=>eligible.some(item=>item.id===line.itemId));
+      const retainedIds=new Set(retained.map(line=>line.itemId));
+      const defaults=eligible.filter(item=>item.defaultProposalTypeIds?.includes(nextTypeId)&&!retainedIds.has(item.id)).map(item=>({itemId:item.id,quantity:item.minQuantity??1,discount:0}));
+      return [...retained,...defaults];
+    });
+  }
+
+  const eligibleCatalogue=catalogueItems.filter(item=>!proposalTypeId||!item.proposalTypeIds?.length||item.proposalTypeIds.includes(proposalTypeId));
+  const categoryLabel=(id?:string)=>catalogueCategories.find(category=>category.id===id)?.name??id??"Other";
+  const serviceGroups=[...new Set(eligibleCatalogue.map(item=>item.categoryId))].map(categoryId=>({categoryId,subgroups:[...new Set(eligibleCatalogue.filter(item=>item.categoryId===categoryId).map(item=>item.subcategoryId??""))].map(subcategoryId=>({subcategoryId,items:eligibleCatalogue.filter(item=>item.categoryId===categoryId&&(item.subcategoryId??"")===subcategoryId)}))}));
 
   async function saveQuote(status: "Draft" | "Ready") {
     setSaving(status);
@@ -310,7 +326,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, ruleSe
           answers,
           quoteDiscount,
           lines,
-          document: { title: proposalTitle, introduction: proposalIntroduction, scopeHeading, brandName, brandInitials, depositMinor: Math.max(0, Math.round(Number(deposit || 0) * 100)), options: proposalOptions.filter((option) => option.label.trim()), pages:proposalPages },
+          document: { title: proposalTitle, introduction: proposalIntroduction, scopeHeading, brandName, brandInitials, proposalTypeId, depositMinor: Math.max(0, Math.round(Number(deposit || 0) * 100)), options: proposalOptions.filter((option) => option.label.trim()), pages:proposalPages },
         }),
       });
       const payload = (await response.json()) as { error?: string };
@@ -468,20 +484,16 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, ruleSe
             <div className="section-number">02</div>
             <div className="section-content">
               <div className="section-title-row">
-                <div><h2>Services and products</h2><p>Select from the governed catalogue. Prices calculate automatically.</p></div>
-                <button className="text-button" onClick={() => setPickerOpen((open) => !open)}>+ Add item</button>
+                <div><h2>Services and products</h2><p>Choose the proposal type, then toggle each eligible service on or off for this quote.</p></div>
+                <button className="text-button" onClick={() => setPickerOpen((open) => !open)}>{pickerOpen?"Hide service selector":"Manage services"}</button>
               </div>
 
+              <div className="proposal-type-selector"><label><span>Proposal type</span><select value={proposalTypeId} disabled={locked} onChange={event=>selectProposalType(event.target.value)}>{proposalTypes.filter(type=>type.active).map(type=><option key={type.id} value={type.id}>{type.name}</option>)}</select></label><p>{proposalTypes.find(type=>type.id===proposalTypeId)?.description??"Services without a proposal-type restriction remain available in every quote."}</p><strong>{lines.length} selected</strong></div>
+
               {pickerOpen && (
-                <div className="item-picker">
-                  <div><strong>Add from catalogue</strong><button onClick={() => setPickerOpen(false)}>×</button></div>
-                  {catalogueItems.map((item) => (
-                    <label key={item.id}>
-                      <input type="checkbox" checked={lines.some((line) => line.itemId === item.id)} onChange={() => toggleItem(item.id)} />
-                      <span><strong>{item.name}</strong><small>{item.pricingBasis.replace("_", " ")} · {labels[item.recurrence]}</small></span>
-                      <b>{item.basePriceMinor ? formatMoney(item.basePriceMinor) : "Cost plus"}</b>
-                    </label>
-                  ))}
+                <div className="service-toggle-picker">
+                  <div className="service-toggle-heading"><div><strong>Services available for this proposal type</strong><p>Default services are preselected but every service remains under quote-level control.</p></div><button aria-label="Close service selector" onClick={() => setPickerOpen(false)}>×</button></div>
+                  {serviceGroups.map(group=><section key={group.categoryId}><h3>{categoryLabel(group.categoryId)}</h3>{group.subgroups.map(subgroup=><div key={subgroup.subcategoryId||"other"}><h4>{categoryLabel(subgroup.subcategoryId)||"Other"}</h4>{subgroup.items.map(item=>{const selected=lines.some(line=>line.itemId===item.id);return <label className={selected?"selected":""} key={item.id}><input type="checkbox" checked={selected} disabled={locked} onChange={()=>toggleItem(item.id)}/><span className="service-switch" aria-hidden="true"><i/></span><span><strong>{item.name}</strong><small>{item.description||`${item.pricingBasis.replace("_"," ")} · ${labels[item.recurrence]}`}</small><em>{labels[item.recurrence]} · {item.serviceSchedule?"Schedule included":"No schedule"}</em></span><b>{item.basePriceMinor?formatMoney(item.basePriceMinor):"Cost plus"}</b></label>})}</div>)}</section>)}
                 </div>
               )}
 
@@ -496,12 +508,12 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, ruleSe
                   return (
                     <div className="line-group" key={selected.itemId}>
                       <div className="line-row" role="row">
-                        <span className="item-cell"><span className="item-glyph">{item.name.charAt(0)}</span><span><strong>{item.name}</strong><small>{item.unitLabel} · {labels[item.recurrence]}</small></span></span>
-                        <span><input className="quantity-input" aria-label={`${item.name} quantity`} type="number" min={item.minQuantity ?? 1} max={item.maxQuantity} value={selected.quantity} onChange={(event) => updateQuantity(item.id, Number(event.target.value))} /></span>
+                        <span className="item-cell"><span className="item-glyph">{item.name.charAt(0)}</span><span><strong>{item.name}</strong><small>{categoryLabel(item.categoryId)}{item.subcategoryId?` / ${categoryLabel(item.subcategoryId)}`:""} · {item.unitLabel} · {labels[item.recurrence]}</small></span></span>
+                        <span><input className="quantity-input" aria-label={`${item.name} quantity`} type="number" disabled={locked} min={item.minQuantity ?? 1} max={item.maxQuantity} value={selected.quantity} onChange={(event) => updateQuantity(item.id, Number(event.target.value))} /></span>
                         <span>{line ? formatMoney(line.effectiveUnitPriceMinor) : "—"}</span>
                         <span className={line?.marginBp !== null && line?.marginBp !== undefined && line.marginBp < 3500 ? "margin-low" : "margin-good"}>{line?.marginBp === null || line?.marginBp === undefined ? "Unknown" : `${(line.marginBp / 100).toFixed(1)}%`}</span>
                         <span className="line-total">{line ? formatMoney(line.finalPriceMinor) : "—"}</span>
-                        <span className="line-actions"><button aria-label={`Explain ${item.name}`} onClick={() => setExplainLine(explainLine === item.id ? null : item.id)}>⌄</button><button aria-label={`Remove ${item.name}`} onClick={() => toggleItem(item.id)}>×</button></span>
+                        <span className="line-actions"><button aria-label={`Explain ${item.name}`} onClick={() => setExplainLine(explainLine === item.id ? null : item.id)}>⌄</button><button aria-label={`Remove ${item.name}`} disabled={locked} onClick={() => toggleItem(item.id)}>×</button></span>
                       </div>
                       {explainLine === item.id && line && (
                         <div className="explanation">
@@ -598,7 +610,7 @@ function QuoteSummary({ quote, reference, ruleSetVersion, errors, discount, setD
   );
 }
 
-function PreviewBlock({block,quote,recurring,options}:{block:DocumentPage["blocks"][number];quote:PricedQuote;recurring:Array<[Frequency,number]>;options:Array<{id:string;label:string}>}){if(block.enabled===false)return null;const heading=<>{block.eyebrow&&<p className="eyebrow">{block.eyebrow}</p>}{block.title&&<h2>{block.title}</h2>}</>;if(block.type==="spacer")return <div className="recipient-spacer"/>;if(block.type==="pricing_table")return <div className="recipient-content-block">{heading}{block.display!=="totals"&&<section className="document-scope">{quote.lines.map(line=><div key={line.lineId}><span><strong>{line.itemName}</strong><small>{line.quantity} {line.unitLabel}</small></span><strong>{formatMoney(line.finalPriceMinor)}</strong></div>)}</section>}{block.display!=="lines"&&<section className="document-totals"><div><small>ONE-OFF INVESTMENT</small><strong>{formatMoney(quote.oneOffSubtotalMinor)}</strong></div>{recurring.map(([frequency,amount])=><div key={frequency}><small>{labels[frequency].toUpperCase()} RECURRING</small><strong>{formatMoney(amount)}</strong></div>)}</section>}</div>;if(["feature_grid","timeline","team","faq"].includes(block.type))return <div className="recipient-content-block">{heading}<div className="recipient-items" style={{"--columns":String(block.columns??3)} as CSSProperties}>{(block.items??[]).map(item=><div key={item.id}><strong>{item.title}</strong><p>{item.content}</p></div>)}</div></div>;if(block.type==="image")return <div className="recipient-content-block">{heading}{block.fileId&&<img className="recipient-media" src={`/api/files/${block.fileId}`} alt={block.title??"Proposal image"}/>}</div>;if(block.type==="options")return <div className="recipient-content-block">{heading}<div className="recipient-items">{options.map(option=><div key={option.id}><strong>{option.label}</strong></div>)}</div></div>;return <div className={`recipient-content-block ${block.type==="callout"?"recipient-callout":""}`}>{heading}{block.content&&<p>{block.content}</p>}</div>}
+function PreviewBlock({block,quote,recurring,options}:{block:DocumentPage["blocks"][number];quote:PricedQuote;recurring:Array<[Frequency,number]>;options:Array<{id:string;label:string}>}){if(block.enabled===false)return null;const heading=<>{block.eyebrow&&<p className="eyebrow">{block.eyebrow}</p>}{block.title&&<h2>{block.title}</h2>}</>;if(block.type==="spacer")return <div className="recipient-spacer"/>;if(block.type==="pricing_table")return <div className="recipient-content-block">{heading}{block.display!=="totals"&&<section className="document-scope service-schedule-scope">{quote.lines.map(line=><div className="proposal-service-line" key={line.lineId}><div><span><strong>{line.itemName}</strong><small>{line.quantity} {line.unitLabel}</small></span><strong>{formatMoney(line.finalPriceMinor)}</strong></div>{(line.description||line.serviceSchedule||line.serviceTerms)&&<section>{line.description&&<p>{line.description}</p>}{line.serviceSchedule&&<div><strong>Service schedule</strong><p>{line.serviceSchedule}</p></div>}{line.serviceTerms&&<div><strong>Service terms</strong><p>{line.serviceTerms}</p></div>}</section>}</div>)}</section>}{block.display!=="lines"&&<section className="document-totals"><div><small>ONE-OFF INVESTMENT</small><strong>{formatMoney(quote.oneOffSubtotalMinor)}</strong></div>{recurring.map(([frequency,amount])=><div key={frequency}><small>{labels[frequency].toUpperCase()} RECURRING</small><strong>{formatMoney(amount)}</strong></div>)}</section>}</div>;if(["feature_grid","timeline","team","faq"].includes(block.type))return <div className="recipient-content-block">{heading}<div className="recipient-items" style={{"--columns":String(block.columns??3)} as CSSProperties}>{(block.items??[]).map(item=><div key={item.id}><strong>{item.title}</strong><p>{item.content}</p></div>)}</div></div>;if(block.type==="image")return <div className="recipient-content-block">{heading}{block.fileId&&<img className="recipient-media" src={`/api/files/${block.fileId}`} alt={block.title??"Proposal image"}/>}</div>;if(block.type==="options")return <div className="recipient-content-block">{heading}<div className="recipient-items">{options.map(option=><div key={option.id}><strong>{option.label}</strong></div>)}</div></div>;return <div className={`recipient-content-block ${block.type==="callout"?"recipient-callout":""}`}>{heading}{block.content&&<p>{block.content}</p>}</div>}
 
 function QuotePreview({ quote, clientName, reference, title, introduction, scopeHeading, brandName, brandInitials, pages, options, onBack }: { quote: PricedQuote; clientName: string; reference: string; title: string; introduction: string; scopeHeading: string; brandName: string; brandInitials: string; pages:DocumentPage[];options:Array<{id:string;label:string}>; onBack: () => void }) {
   const recurring = (Object.entries(quote.recurringByFrequency) as Array<[Frequency, number]>).filter(([frequency, amount]) => frequency !== "one_off" && amount > 0);
@@ -691,81 +703,6 @@ function ClientsScreen({ clients, onSaved }: { clients: ClientRecord[]; onSaved:
   }
 
   return <div className="standard-page"><div className="page-heading"><div><p className="eyebrow">Commercial relationships</p><h1>Clients</h1><p className="page-subtitle">Govern contact records, quote history and accepted commercial value.</p></div><button className="button primary" onClick={() => openEditor()}>+ New client</button></div>{editorOpen && <section className="catalogue-editor"><div className="editor-heading"><div><p className="eyebrow">{editing ? "Edit client" : "New client"}</p><h2>{editing?.name ?? "Client record"}</h2></div><button aria-label="Close client editor" onClick={() => setEditorOpen(false)}>×</button></div><div className="editor-grid client-editor-grid"><label><span>Client name</span><input value={name} onChange={(event) => setName(event.target.value)} /></label><label><span>Contact name</span><input value={contactName} onChange={(event) => setContactName(event.target.value)} /></label><label><span>Contact email</span><input type="email" value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} /></label><label><span>Status</span><select value={status} onChange={(event) => setStatus(event.target.value as ClientRecord["status"])}><option>Active</option><option>Archived</option></select></label></div>{message && <p className="editor-error">{message}</p>}<div className="editor-actions"><button className="button secondary" onClick={() => setEditorOpen(false)}>Cancel</button><button className="button primary" onClick={saveClient} disabled={saving || !name.trim() || !contactName.trim() || !contactEmail.trim()}>{saving ? "Saving…" : "Save client"}</button></div></section>}<section className="data-panel"><div className="panel-toolbar"><div><h2>Client records</h2><p>{clients.filter((client) => client.status === "Active").length} active relationships</p></div><input placeholder="Search clients" value={search} onChange={(event) => setSearch(event.target.value)} /></div><div className="client-table"><div className="client-row client-header"><span>Client and contact</span><span>Status</span><span>Quotes</span><span>Accepted one-off</span><span>Accepted recurring</span><span /></div>{visible.map((client) => <button className="client-row" key={client.id} onClick={() => openEditor(client)}><span><strong>{client.name}</strong><small>{client.contactName} · {client.contactEmail}</small></span><span><Status>{client.status}</Status></span><strong>{client.quoteCount}</strong><strong>{formatMoney(client.acceptedOneOffMinor)}</strong><strong>{formatMoney(client.acceptedRecurringAnnualisedMinor)} annualised</strong><span>›</span></button>)}{visible.length === 0 && <div className="empty-state quote-empty"><strong>No matching clients</strong><p>Create a client or adjust the search.</p></div>}</div></section></div>;
-}
-
-function CatalogueScreen({ catalogueItems, onSaved }: { catalogueItems: CatalogueItem[]; onSaved: (item: CatalogueItem) => void }) {
-  const [search, setSearch] = useState("");
-  const [editing, setEditing] = useState<CatalogueItem | null>(null);
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [categoryId, setCategoryId] = useState("advisory");
-  const [unitLabel, setUnitLabel] = useState("day");
-  const [pricingBasis, setPricingBasis] = useState<CatalogueItem["pricingBasis"]>("per_unit");
-  const [recurrence, setRecurrence] = useState<CatalogueItem["recurrence"]>("one_off");
-  const [basePrice, setBasePrice] = useState("0");
-  const [cost, setCost] = useState("0");
-  const [targetMargin, setTargetMargin] = useState("40");
-  const [minQuantity, setMinQuantity] = useState("1");
-  const [maxQuantity, setMaxQuantity] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const visible = catalogueItems.filter((item) => `${item.name} ${item.categoryId}`.toLowerCase().includes(search.toLowerCase()));
-
-  function openEditor(item?: CatalogueItem) {
-    setEditing(item ?? null);
-    setName(item?.name ?? "");
-    setCategoryId(item?.categoryId ?? "advisory");
-    setUnitLabel(item?.unitLabel ?? "day");
-    setPricingBasis(item?.pricingBasis ?? "per_unit");
-    setRecurrence(item?.recurrence ?? "one_off");
-    setBasePrice(String((item?.basePriceMinor ?? 0) / 100));
-    setCost(String((item?.costMinor ?? 0) / 100));
-    setTargetMargin(String((item?.targetMarginBp ?? 4000) / 100));
-    setMinQuantity(String(item?.minQuantity ?? 1));
-    setMaxQuantity(item?.maxQuantity ? String(item.maxQuantity) : "");
-    setMessage(null);
-    setEditorOpen(true);
-  }
-
-  async function saveItem() {
-    setSaving(true);
-    setMessage(null);
-    try {
-      const response = await fetch("/api/catalogue", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          id: editing?.id ?? name,
-          name,
-          categoryId,
-          unitLabel,
-          pricingBasis,
-          recurrence,
-          basePriceMinor: pricingBasis === "cost_plus" ? undefined : Math.round(Number(basePrice) * 100),
-          costMinor: Number(cost) > 0 ? Math.round(Number(cost) * 100) : undefined,
-          targetMarginBp: pricingBasis === "cost_plus" ? Math.round(Number(targetMargin) * 100) : undefined,
-          minQuantity: Number(minQuantity),
-          maxQuantity: maxQuantity ? Number(maxQuantity) : undefined,
-        }),
-      });
-      const payload = (await response.json()) as { item?: CatalogueItem; error?: string };
-      if (!response.ok || !payload.item) throw new Error(payload.error ?? "The catalogue item could not be saved.");
-      onSaved(payload.item);
-      setEditorOpen(false);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "The catalogue item could not be saved.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="standard-page">
-      <div className="page-heading"><div><p className="eyebrow">Governed configuration</p><h1>Catalogue</h1><p className="page-subtitle">The approved services and products used by both browser and server pricing.</p></div><button className="button primary" onClick={() => openEditor()}>+ Add catalogue item</button></div>
-      {editorOpen && <section className="catalogue-editor"><div className="editor-heading"><div><p className="eyebrow">{editing ? "Edit approved item" : "New approved item"}</p><h2>{editing?.name ?? "Catalogue item"}</h2></div><button aria-label="Close editor" onClick={() => setEditorOpen(false)}>×</button></div><div className="editor-grid"><label><span>Name</span><input value={name} onChange={(event) => setName(event.target.value)} /></label><label><span>Category</span><input value={categoryId} onChange={(event) => setCategoryId(event.target.value)} /></label><label><span>Unit</span><input value={unitLabel} onChange={(event) => setUnitLabel(event.target.value)} /></label><label><span>Pricing basis</span><select value={pricingBasis} onChange={(event) => setPricingBasis(event.target.value as CatalogueItem["pricingBasis"])}><option value="fixed">Fixed</option><option value="per_unit">Per unit</option><option value="cost_plus">Cost plus</option></select></label><label><span>Recurrence</span><select value={recurrence} onChange={(event) => setRecurrence(event.target.value as CatalogueItem["recurrence"])}><option value="one_off">One-off</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="annually">Annually</option></select></label>{pricingBasis !== "cost_plus" && <label><span>Base price (£)</span><input type="number" min="0" step="0.01" value={basePrice} onChange={(event) => setBasePrice(event.target.value)} /></label>}<label><span>Cost (£)</span><input type="number" min="0" step="0.01" value={cost} onChange={(event) => setCost(event.target.value)} /></label>{pricingBasis === "cost_plus" && <label><span>Target margin (%)</span><input type="number" min="1" max="95" value={targetMargin} onChange={(event) => setTargetMargin(event.target.value)} /></label>}<label><span>Minimum quantity</span><input type="number" min="1" value={minQuantity} onChange={(event) => setMinQuantity(event.target.value)} /></label><label><span>Maximum quantity</span><input type="number" min="1" value={maxQuantity} onChange={(event) => setMaxQuantity(event.target.value)} placeholder="No limit" /></label></div>{message && <p className="editor-error">{message}</p>}<div className="editor-actions"><button className="button secondary" onClick={() => setEditorOpen(false)}>Cancel</button><button className="button primary" onClick={saveItem} disabled={saving || !name.trim()}>{saving ? "Saving…" : "Save approved item"}</button></div></section>}
-      <section className="data-panel"><div className="panel-toolbar"><div><h2>Active catalogue</h2><p>{catalogueItems.length} items across {new Set(catalogueItems.map((item) => item.categoryId)).size} categories</p></div><input placeholder="Search catalogue" value={search} onChange={(event) => setSearch(event.target.value)} /></div><div className="catalogue-table"><div className="catalogue-row catalogue-header"><span>Item</span><span>Pricing basis</span><span>Recurrence</span><span>Base or cost</span><span>Margin basis</span><span /></div>{visible.map((item) => <button className="catalogue-row catalogue-button" key={item.id} onClick={() => openEditor(item)}><span className="item-cell"><span className="item-glyph">{item.name.charAt(0)}</span><span><strong>{item.name}</strong><small>{item.categoryId}</small></span></span><span>{item.pricingBasis.replace("_", " ")}</span><span>{labels[item.recurrence]}</span><strong>{formatMoney(item.basePriceMinor ?? item.costMinor ?? 0)}</strong><span>{item.targetMarginBp ? `${item.targetMarginBp / 100}% target` : item.costMinor ? "Tracked cost" : "Not recorded"}</span><span>›</span></button>)}</div></section>
-    </div>
-  );
 }
 
 function RulesScreen({ published, draft, catalogueItems, onChanged }: { published: RuleSet; draft: RuleSet | null; catalogueItems: CatalogueItem[]; onChanged: (published: RuleSet, draft: RuleSet | null) => void }) {
@@ -890,6 +827,8 @@ export default function QuoteBench({ currentUser }: { currentUser: ChatGPTUser |
   const [savedEvents, setSavedEvents] = useState<SavedEvent[]>([]);
   const [clients, setClients] = useState<ClientRecord[]>([]);
   const [workspaceCatalogue, setWorkspaceCatalogue] = useState<CatalogueItem[]>(catalogue);
+  const [catalogueCategories,setCatalogueCategories]=useState<ServiceCategory[]>(seedCatalogueCategories);
+  const [proposalTypes,setProposalTypes]=useState<ProposalType[]>(seedProposalTypes);
   const [activeRuleSet, setActiveRuleSet] = useState<RuleSet>(defaultRuleSet);
   const [draftRuleSet, setDraftRuleSet] = useState<RuleSet | null>(null);
   const [entitlement, setEntitlement] = useState<Entitlement | null>(null);
@@ -933,12 +872,14 @@ export default function QuoteBench({ currentUser }: { currentUser: ChatGPTUser |
     setQuotesLoading(true);
     try {
       const response = await fetch("/api/quotes", { cache: "no-store" });
-      const payload = (await response.json()) as { quotes?: SavedQuote[]; events?: SavedEvent[]; entitlement?: Entitlement; catalogue?: CatalogueItem[]; ruleSet?: RuleSet; draftRuleSet?: RuleSet | null; clients?: ClientRecord[]; workspace?:Workspace; error?: string };
+      const payload = (await response.json()) as { quotes?: SavedQuote[]; events?: SavedEvent[]; entitlement?: Entitlement; catalogue?: CatalogueItem[]; catalogueCategories?:ServiceCategory[];proposalTypes?:ProposalType[]; ruleSet?: RuleSet; draftRuleSet?: RuleSet | null; clients?: ClientRecord[]; workspace?:Workspace; error?: string };
       if (!response.ok) throw new Error(payload.error ?? "Saved quotes are unavailable.");
       setSavedQuotes(payload.quotes ?? []);
       setSavedEvents(payload.events ?? []);
       setEntitlement(payload.entitlement ?? null);
       setWorkspaceCatalogue(payload.catalogue ?? catalogue);
+      setCatalogueCategories(payload.catalogueCategories??seedCatalogueCategories);
+      setProposalTypes(payload.proposalTypes??seedProposalTypes);
       setActiveRuleSet(payload.ruleSet ?? defaultRuleSet);
       setDraftRuleSet(payload.draftRuleSet ?? null);
       setClients(payload.clients ?? []);
@@ -956,16 +897,18 @@ export default function QuoteBench({ currentUser }: { currentUser: ChatGPTUser |
     let active = true;
     fetch("/api/quotes", { cache: "no-store" })
       .then(async (response) => {
-        const payload = (await response.json()) as { quotes?: SavedQuote[]; events?: SavedEvent[]; entitlement?: Entitlement; catalogue?: CatalogueItem[]; ruleSet?: RuleSet; draftRuleSet?: RuleSet | null; clients?: ClientRecord[]; workspace?:Workspace; error?: string };
+        const payload = (await response.json()) as { quotes?: SavedQuote[]; events?: SavedEvent[]; entitlement?: Entitlement; catalogue?: CatalogueItem[]; catalogueCategories?:ServiceCategory[];proposalTypes?:ProposalType[]; ruleSet?: RuleSet; draftRuleSet?: RuleSet | null; clients?: ClientRecord[]; workspace?:Workspace; error?: string };
         if (!response.ok) throw new Error(payload.error ?? "Saved quotes are unavailable.");
-        return { quotes: payload.quotes ?? [], events: payload.events ?? [], entitlement: payload.entitlement ?? null, catalogueItems: payload.catalogue ?? catalogue, nextRuleSet: payload.ruleSet ?? defaultRuleSet, nextDraftRuleSet: payload.draftRuleSet ?? null, clientRecords: payload.clients ?? [], nextWorkspace: payload.workspace??null };
+        return { quotes: payload.quotes ?? [], events: payload.events ?? [], entitlement: payload.entitlement ?? null, catalogueItems: payload.catalogue ?? catalogue, nextCategories:payload.catalogueCategories??seedCatalogueCategories,nextProposalTypes:payload.proposalTypes??seedProposalTypes, nextRuleSet: payload.ruleSet ?? defaultRuleSet, nextDraftRuleSet: payload.draftRuleSet ?? null, clientRecords: payload.clients ?? [], nextWorkspace: payload.workspace??null };
       })
-      .then(({ quotes, events, entitlement: nextEntitlement, catalogueItems, nextRuleSet, nextDraftRuleSet, clientRecords, nextWorkspace }) => {
+      .then(({ quotes, events, entitlement: nextEntitlement, catalogueItems, nextCategories,nextProposalTypes,nextRuleSet, nextDraftRuleSet, clientRecords, nextWorkspace }) => {
         if (active) {
           setSavedQuotes(quotes);
           setSavedEvents(events);
           setEntitlement(nextEntitlement);
           setWorkspaceCatalogue(catalogueItems);
+          setCatalogueCategories(nextCategories);
+          setProposalTypes(nextProposalTypes);
           setActiveRuleSet(nextRuleSet);
           setDraftRuleSet(nextDraftRuleSet);
           setClients(clientRecords);
@@ -992,10 +935,10 @@ export default function QuoteBench({ currentUser }: { currentUser: ChatGPTUser |
       <div className="main-shell">
         <Topbar workspace={workspace} workspaces={workspaces.length?workspaces:workspace?[workspace]:[]} />
         <main className="main-content">
-          {screen === "builder" && <QuoteBuilder key={activeReference} reference={activeReference} initialQuote={activeQuote} clients={clients} catalogueItems={workspaceCatalogue} ruleSet={activeRuleSet} onSaved={refreshQuotes} onRevised={openRevision} />}
+          {screen === "builder" && <QuoteBuilder key={activeReference} reference={activeReference} initialQuote={activeQuote} clients={clients} catalogueItems={workspaceCatalogue} catalogueCategories={catalogueCategories} proposalTypes={proposalTypes} ruleSet={activeRuleSet} onSaved={refreshQuotes} onRevised={openRevision} />}
           {screen === "quotes" && <QuotesScreen onCreate={startNewQuote} onOpen={openQuote} savedQuotes={savedQuotes} loading={quotesLoading} storageMessage={storageMessage} />}
           {screen === "clients" && <ClientsScreen clients={clients} onSaved={(client) => setClients((current) => [...current.filter((entry) => entry.id !== client.id), client].sort((a, b) => a.name.localeCompare(b.name)))} />}
-          {screen === "catalogue" && <CatalogueScreen catalogueItems={workspaceCatalogue} onSaved={(item) => setWorkspaceCatalogue((current) => [...current.filter((entry) => entry.id !== item.id), item].sort((a, b) => a.name.localeCompare(b.name)))} />}
+          {screen === "catalogue" && <CatalogueScreen catalogueItems={workspaceCatalogue} categories={catalogueCategories} proposalTypes={proposalTypes} onRefresh={refreshQuotes} />}
           {screen === "rules" && <RulesScreen published={activeRuleSet} draft={draftRuleSet} catalogueItems={workspaceCatalogue} onChanged={(published, draft) => { setActiveRuleSet(published); setDraftRuleSet(draft); }} />}
           {screen === "activity" && <ActivityScreen events={savedEvents} />}
           {screen === "integrations" && <IntegrationsScreen onImported={refreshQuotes} />}

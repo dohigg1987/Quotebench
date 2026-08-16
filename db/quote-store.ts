@@ -85,18 +85,20 @@ export type PublicQuote = StoredQuote & {
   ruleSetVersion: number;
   pricingSnapshot: {
     currency: string;
-    lines: Array<{ lineId: string; itemName: string; quantity: number; unitLabel: string; finalPriceMinor: number }>;
+    lines: Array<{ lineId: string; itemName: string; categoryId?:string; subcategoryId?:string; description?:string; serviceSchedule?:string; serviceTerms?:string; quantity: number; unitLabel: string; finalPriceMinor: number }>;
     oneOffSubtotalMinor: number;
     recurringByFrequency: Record<string, number>;
     recurringAnnualisedMinor: number;
   };
-  document: { title: string; introduction: string; scopeHeading: string; brandName?: string; brandInitials?: string; depositMinor?: number; options?: Array<{ id: string; label: string }>; pages?:import("./document-store").DocumentPage[] };
+  document: { title: string; introduction: string; scopeHeading: string; brandName?: string; brandInitials?: string; proposalTypeId?:string; depositMinor?: number; options?: Array<{ id: string; label: string }>; pages?:import("./document-store").DocumentPage[] };
 };
 
 export type InternalQuote = StoredQuote & {
   lines: Array<{ itemId: string; quantity: number; discount: number }>;
   answers: { values?: Record<string, string>; complexity?: string; turnaround?: string; quoteDiscount?: number };
-  document: { title: string; introduction: string; scopeHeading: string; brandName?: string; brandInitials?: string; depositMinor?: number; options?: Array<{ id: string; label: string }>; pages?:import("./document-store").DocumentPage[] };
+  pricingSnapshot:PublicQuote["pricingSnapshot"];
+  ruleSetVersion:number;
+  document: { title: string; introduction: string; scopeHeading: string; brandName?: string; brandInitials?: string; proposalTypeId?:string; depositMinor?: number; options?: Array<{ id: string; label: string }>; pages?:import("./document-store").DocumentPage[] };
   revisionOf: string | null;
 };
 
@@ -352,6 +354,8 @@ export async function getInternalQuote(tenantId: string, reference: string): Pro
     declineReason: row.decline_reason,
     lines: parseJson(row.line_items_json, []),
     answers: parseJson(row.answers_json, {}),
+    pricingSnapshot:parseJson(row.pricing_snapshot_json,{currency:row.currency,lines:[],oneOffSubtotalMinor:row.one_off_total_minor,recurringByFrequency:{},recurringAnnualisedMinor:row.recurring_annualised_minor}),
+    ruleSetVersion:row.rule_set_version,
     document: parseJson(row.document_json, {
       title: "Commercial proposal",
       introduction: "",

@@ -1,7 +1,7 @@
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { assertQuoteCapacity, getWorkspaceEntitlement, listQuoteEvents, listQuotes, upsertQuote } from "../../../db/quote-store";
 import { money, price } from "../../../packages/pricing-engine/src/index";
-import { listCatalogueItems } from "../../../db/catalogue-store";
+import { listCatalogueItems, listCatalogueWorkspace } from "../../../db/catalogue-store";
 import { getRuleWorkspace } from "../../../db/pricing-rule-store";
 import { listClients, upsertClient } from "../../../db/client-store";
 import { requireWorkspaceContext } from "../../../db/workspace-store";
@@ -20,7 +20,7 @@ type SaveQuoteBody = {
   answers?: Record<string, string>;
   quoteDiscount?: number;
   lines?: Array<{ itemId?: string; quantity?: number; discount?: number }>;
-  document?: { title?: string; introduction?: string; scopeHeading?: string; brandName?: string; brandInitials?: string; depositMinor?:number; options?:Array<{id:string;label:string}>; pages?:DocumentPage[] };
+  document?: { title?: string; introduction?: string; scopeHeading?: string; brandName?: string; brandInitials?: string; proposalTypeId?:string; depositMinor?:number; options?:Array<{id:string;label:string}>; pages?:DocumentPage[] };
 };
 
 function unauthorised() {
@@ -35,8 +35,8 @@ export async function GET() {
 
   try {
     const tenantId = member.tenantId;
-    const [quotes, events, entitlement, catalogueItems, rules, clients] = await Promise.all([listQuotes(tenantId), listQuoteEvents(tenantId), getWorkspaceEntitlement(tenantId), listCatalogueItems(tenantId), getRuleWorkspace(tenantId), listClients(tenantId)]);
-    return Response.json({ quotes, events, entitlement, catalogue: catalogueItems, ruleSet: rules.published, draftRuleSet: rules.draft, clients, workspace: { id: tenantId, name: member.workspaceName, currency: member.currency, role: member.role } });
+    const [quotes, events, entitlement, catalogueWorkspace, rules, clients] = await Promise.all([listQuotes(tenantId), listQuoteEvents(tenantId), getWorkspaceEntitlement(tenantId), listCatalogueWorkspace(tenantId), getRuleWorkspace(tenantId), listClients(tenantId)]);
+    return Response.json({ quotes, events, entitlement, catalogue: catalogueWorkspace.catalogue, catalogueCategories:catalogueWorkspace.categories, proposalTypes:catalogueWorkspace.proposalTypes, ruleSet: rules.published, draftRuleSet: rules.draft, clients, workspace: { id: tenantId, name: member.workspaceName, currency: member.currency, role: member.role } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Quote storage failed";
     return Response.json({ error: message }, { status: 500 });
@@ -73,6 +73,7 @@ export async function POST(request: Request) {
       scopeHeading: body.document?.scopeHeading?.trim() || "A practical route to measurable change",
       brandName: body.document?.brandName?.trim() || "Finance Advisory Partners",
       brandInitials: body.document?.brandInitials?.trim().slice(0, 4).toUpperCase() || "FAP",
+      proposalTypeId:body.document?.proposalTypeId?.trim().slice(0,80)||undefined,
       depositMinor: Math.max(0,Math.round(Number(body.document?.depositMinor??0))),
       options:(body.document?.options??[]).slice(0,12).map(option=>({id:String(option.id||crypto.randomUUID()),label:String(option.label??"").trim().slice(0,160)})).filter(option=>option.label),
       pages:normaliseProposalPages(body.document?.pages),

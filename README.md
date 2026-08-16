@@ -32,6 +32,7 @@ This repository contains the governed vertical slice and its first durable workf
 - exponential webhook recovery, scheduled retention and full tenant purge across D1 and R2
 - deployment security headers, health checks and GitHub CI release gates
 - a multi-page proposal studio with reusable templates, flexible page formats and structured content, proof, media, pricing, option, term and acceptance blocks
+- a governed service catalogue with tenant-defined categories and subcategories, proposal-type availability and defaults, quote-level service toggles, and snapshotted service schedules and terms
 
 Provider-backed transactional email and Stripe Checkout activate when their production credentials are supplied. Without them, secure recipient links, delivery governance, all acceptance workflows, metering, exports and the rest of the application remain runnable. The operator dashboard is sign-in gated and requires an authorised email SHA-256 digest in `OPERATOR_EMAIL_SHA256`, while recipient proposals are protected by distinct high-entropy tokens.
 

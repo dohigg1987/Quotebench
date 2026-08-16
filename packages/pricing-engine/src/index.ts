@@ -57,7 +57,13 @@ export type PricingBasis = "fixed" | "per_unit" | "cost_plus";
 export type CatalogueItem = {
   id: string;
   categoryId: string;
+  subcategoryId?: string;
   name: string;
+  description?: string;
+  serviceSchedule?: string;
+  serviceTerms?: string;
+  proposalTypeIds?: string[];
+  defaultProposalTypeIds?: string[];
   unitLabel: string;
   pricingBasis: PricingBasis;
   basePriceMinor?: Minor;
@@ -186,6 +192,11 @@ export type AppliedModifier = {
 export type PricedLine = {
   lineId: string;
   itemName: string;
+  categoryId: string;
+  subcategoryId?: string;
+  description?: string;
+  serviceSchedule?: string;
+  serviceTerms?: string;
   unitLabel: string;
   baseUnitPriceMinor: Minor;
   effectiveUnitPriceMinor: Minor;
@@ -423,6 +434,11 @@ function priceLine(request: PriceRequest, line: RequestLine): PricedLine | Price
   return {
     lineId: line.lineId,
     itemName: line.item.name,
+    categoryId: line.item.categoryId,
+    ...(line.item.subcategoryId ? { subcategoryId: line.item.subcategoryId } : {}),
+    ...(line.item.description ? { description: line.item.description } : {}),
+    ...(line.item.serviceSchedule ? { serviceSchedule: line.item.serviceSchedule } : {}),
+    ...(line.item.serviceTerms ? { serviceTerms: line.item.serviceTerms } : {}),
     unitLabel: line.item.unitLabel,
     baseUnitPriceMinor: base,
     effectiveUnitPriceMinor: effectiveUnit,

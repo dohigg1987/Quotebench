@@ -84,3 +84,21 @@ test("Proposal studio supports multi-page, multi-format and reusable block compo
   assert.match(quoteBuilder, /Start from a reusable template/);
   assert.doesNotMatch(quoteBuilder, /Consulting rate card/i);
 });
+
+test("Service catalogue supports category hierarchy, proposal types and quote-level toggles", async()=>{
+  const store=await source("db/catalogue-store.ts");
+  const catalogueScreen=await source("app/catalogue-screen.tsx");
+  const quoteBuilder=await source("app/quote-bench.tsx");
+  const recipient=await source("app/q/[token]/page.tsx");
+  assert.match(store,/service_categories/);
+  assert.match(store,/catalogue_item_proposal_types/);
+  assert.match(store,/default_included/);
+  assert.match(catalogueScreen,/Subcategory/);
+  assert.match(catalogueScreen,/Service schedule/);
+  assert.match(catalogueScreen,/Service-specific terms/);
+  assert.match(catalogueScreen,/Proposal-type availability/);
+  assert.match(quoteBuilder,/toggle each eligible service on or off/i);
+  assert.match(quoteBuilder,/defaultProposalTypeIds/);
+  assert.match(recipient,/Service schedule/);
+  assert.match(recipient,/Service terms/);
+});

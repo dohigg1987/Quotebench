@@ -263,7 +263,11 @@ export const catalogueItems = sqliteTable(
     tenantId: text("tenant_id").notNull(),
     id: text("id").notNull(),
     categoryId: text("category_id").notNull(),
+    subcategoryId: text("subcategory_id"),
     name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    serviceSchedule: text("service_schedule").notNull().default(""),
+    serviceTerms: text("service_terms").notNull().default(""),
     unitLabel: text("unit_label").notNull(),
     pricingBasis: text("pricing_basis", { enum: ["fixed", "per_unit", "cost_plus"] }).notNull(),
     basePriceMinor: integer("base_price_minor"),
@@ -280,6 +284,37 @@ export const catalogueItems = sqliteTable(
     uniqueIndex("catalogue_items_tenant_id_unique").on(table.tenantId, table.id),
     index("catalogue_items_tenant_name_idx").on(table.tenantId, table.name),
   ],
+);
+
+export const serviceCategories = sqliteTable(
+  "service_categories",
+  {
+    tenantId: text("tenant_id").notNull(), id: text("id").notNull(), name: text("name").notNull(),
+    parentId: text("parent_id"), sortOrder: integer("sort_order").notNull().default(0),
+    active: integer("active", { mode: "boolean" }).notNull().default(true), updatedBy: text("updated_by").notNull(),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`), updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [uniqueIndex("service_categories_tenant_id_unique").on(table.tenantId, table.id), index("service_categories_tenant_parent_idx").on(table.tenantId, table.parentId, table.sortOrder)],
+);
+
+export const proposalTypes = sqliteTable(
+  "proposal_types",
+  {
+    tenantId: text("tenant_id").notNull(), id: text("id").notNull(), name: text("name").notNull(),
+    description: text("description").notNull().default(""), active: integer("active", { mode: "boolean" }).notNull().default(true),
+    updatedBy: text("updated_by").notNull(), createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [uniqueIndex("proposal_types_tenant_id_unique").on(table.tenantId, table.id), index("proposal_types_tenant_name_idx").on(table.tenantId, table.name)],
+);
+
+export const catalogueItemProposalTypes = sqliteTable(
+  "catalogue_item_proposal_types",
+  {
+    tenantId: text("tenant_id").notNull(), itemId: text("item_id").notNull(), proposalTypeId: text("proposal_type_id").notNull(),
+    defaultIncluded: integer("default_included", { mode: "boolean" }).notNull().default(false),
+  },
+  (table) => [uniqueIndex("catalogue_item_proposal_types_unique").on(table.tenantId, table.itemId, table.proposalTypeId), index("catalogue_item_proposal_types_type_idx").on(table.tenantId, table.proposalTypeId)],
 );
 
 export const pricingRuleSets = sqliteTable(

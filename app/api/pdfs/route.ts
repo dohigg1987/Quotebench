@@ -48,7 +48,8 @@ export async function GET(request: Request) {
       try {
         const quote = await getInternalQuote(context.tenantId, String(job.quote_reference));
         if (!quote) throw new Error("Quote not found.");
-        const bytes = simplePdf([`QuoteBench proposal ${quote.reference}`, `Prepared for ${quote.clientName}`, `Contact: ${quote.contactName}`, `Valid until ${quote.validUntil}`, `One-off total: ${quote.currency} ${(quote.oneOffTotalMinor / 100).toFixed(2)}`, `Annualised recurring: ${quote.currency} ${(quote.recurringAnnualisedMinor / 100).toFixed(2)}`, "", quote.document.title, quote.document.introduction, quote.document.scopeHeading]);
+        const serviceLines=quote.pricingSnapshot.lines.flatMap(line=>["",`${line.itemName}: ${line.quantity} ${line.unitLabel} - ${quote.currency} ${(line.finalPriceMinor/100).toFixed(2)}`,...(line.description?[line.description]:[]),...(line.serviceSchedule?[`Service schedule: ${line.serviceSchedule}`]:[]),...(line.serviceTerms?[`Service terms: ${line.serviceTerms}`]:[])]);
+        const bytes = simplePdf([`QuoteBench proposal ${quote.reference}`, `Prepared for ${quote.clientName}`, `Contact: ${quote.contactName}`, `Valid until ${quote.validUntil}`, `One-off total: ${quote.currency} ${(quote.oneOffTotalMinor / 100).toFixed(2)}`, `Annualised recurring: ${quote.currency} ${(quote.recurringAnnualisedMinor / 100).toFixed(2)}`, "", quote.document.title, quote.document.introduction, quote.document.scopeHeading,...serviceLines]);
         await completePdfJob(context.tenantId, id, quote.reference, user.email, bytes);
       } catch (error) {
         await failPdfJob(context.tenantId, id, error instanceof Error ? error.message : "Generation failed.");
