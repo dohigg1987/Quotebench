@@ -1,5 +1,6 @@
 import QuoteBench from "./quote-bench";
 import { chatGPTSignInPath, getChatGPTUser } from "./chatgpt-auth";
+import { hasOperatorAccess } from "../db/workspace-store";
 
 export const dynamic = "force-dynamic";
 
@@ -19,5 +20,5 @@ export default async function Home() {
       </main>
     );
   }
-  return <QuoteBench currentUser={user} />;
+  return <QuoteBench currentUser={user} operatorAccess={await hasOperatorAccess(user)} />;
 }

@@ -73,9 +73,13 @@ export async function upsertClient(
   await ensureClients();
   const db = await database();
   const normalisedEmail = input.contactEmail.trim().toLowerCase();
-  const existing = await db.prepare("SELECT id FROM clients WHERE tenant_id = ? AND contact_email = ?")
+  const existing = await db.prepare("SELECT id,status FROM clients WHERE tenant_id = ? AND contact_email = ?")
     .bind(tenantId, normalisedEmail)
-    .first<{ id: string }>();
+    .first<{ id: string; status: "Active" | "Archived" }>();
+  if ((!existing && (input.status ?? "Active") === "Active") || (existing?.status === "Archived" && input.status === "Active")) {
+    const { assertCapacity } = await import("./entitlement-store");
+    await assertCapacity(tenantId, "clients");
+  }
   const id = input.id ?? existing?.id ?? crypto.randomUUID();
   await db.prepare(`INSERT INTO clients
       (id, tenant_id, name, contact_name, contact_email, status, created_by)

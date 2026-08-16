@@ -2,6 +2,8 @@ const ARCHIVE_TABLES = [
   "api_access_log",
   "api_keys",
   "billing_subscriptions",
+  "billing_invoices",
+  "billing_events",
   "brand_profiles",
   "catalogue_item_proposal_types",
   "catalogue_items",
@@ -21,11 +23,14 @@ const ARCHIVE_TABLES = [
   "service_categories",
   "stored_files",
   "tenant_cohorts",
+  "tenant_entitlement_overrides",
   "tracking_events",
   "webhook_deliveries",
   "webhook_endpoints",
   "workspace_entitlements",
   "workspace_members",
+  "operator_notes",
+  "platform_admin_events",
 ] as const;
 
 type TenantArchive = {
