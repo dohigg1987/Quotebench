@@ -18,7 +18,7 @@ export default function AuthForm({ returnTo }: { returnTo: string }) {
     const name = String(form.get("name") ?? "").trim();
 
     try {
-      const authClient = getAuthClient();
+      const authClient = await getAuthClient();
       const result = mode === "register"
         ? await authClient.signUp.email({ email, password, name })
         : await authClient.signIn.email({ email, password });
