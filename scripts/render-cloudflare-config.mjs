@@ -20,6 +20,8 @@ const config = {
   compatibility_date: "2026-08-16",
   compatibility_flags: ["nodejs_compat"],
   no_bundle: true,
+  find_additional_modules: true,
+  rules: [{ type: "ESModule", globs: ["**/*.js"] }],
   upload_source_maps: true,
   placement: { mode: "smart" },
   images: { binding: "IMAGES" },
