@@ -6,7 +6,7 @@ QuoteBench targets ASVS Level 2 for the web application. This register is an eng
 |---|---|---|
 | Encoding and sanitisation | React rendering, `escapeHtml`, input limits | implemented and tested |
 | Validation and business logic | pricing engine, role caps, proposal-state guards | implemented and tested |
-| Web frontend security | CSP, HSTS, frame denial, MIME and referrer headers | implemented, browser verification required |
+| Web frontend security | CSP, HSTS, frame denial, MIME and referrer headers | implemented; inline framework bootstrap remains permitted until nonce support is available |
 | API security | identity, membership, role and API-key scope checks | implemented, integration coverage required |
 | File handling | type and size allowlists, tenant R2 prefixes, expiry | implemented, malware scanning required before high-risk uploads |
 | Authentication | Sign in with ChatGPT platform boundary | inherited plus workspace membership checks |

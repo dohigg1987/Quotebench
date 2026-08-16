@@ -30,8 +30,14 @@ test("unsafe API methods require same-origin browser provenance", async () => {
   const worker = await readFile(new URL("../worker/index.ts", import.meta.url), "utf8");
   assert.match(worker, /Request origin could not be verified/);
   assert.match(worker, /missingBrowserProvenance/);
-  assert.match(worker, /script-src 'self'/);
-  assert.doesNotMatch(worker, /script-src 'self' 'unsafe-inline'/);
+});
+
+test("the production CSP permits the framework bootstrap while retaining containment", async () => {
+  const worker = await readFile(new URL("../worker/index.ts", import.meta.url), "utf8");
+  assert.match(worker, /script-src 'self' 'unsafe-inline'/);
+  assert.match(worker, /object-src 'none'/);
+  assert.match(worker, /frame-ancestors 'none'/);
+  assert.match(worker, /upgrade-insecure-requests/);
 });
 
 test("acceptance stores hashes and uses an atomic state transition", async () => {

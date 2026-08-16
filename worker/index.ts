@@ -55,7 +55,7 @@ const worker = {
     secured.headers.set("x-content-type-options", "nosniff");
     secured.headers.set("referrer-policy", "strict-origin-when-cross-origin");
     secured.headers.set("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=()");
-    secured.headers.set("content-security-policy", "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; upgrade-insecure-requests");
+    secured.headers.set("content-security-policy", "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; upgrade-insecure-requests");
     secured.headers.set("x-request-id", request.headers.get("x-request-id") ?? crypto.randomUUID());
     if (url.pathname.startsWith("/api/")) secured.headers.set("cache-control", "no-store");
     return secured;
