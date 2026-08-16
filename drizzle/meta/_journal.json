@@ -127,6 +127,13 @@
       "when": 1786870000000,
       "tag": "0017_enterprise_cedar",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1786881508338,
+      "tag": "0018_clammy_satana",
+      "breakpoints": true
     }
   ]
 }

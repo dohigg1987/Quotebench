@@ -1,6 +1,7 @@
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { inviteWorkspaceMember, listWorkspaceMembers, updateWorkspaceMember, type WorkspaceRole } from "../../../db/member-store";
 import { requireWorkspaceContext } from "../../../db/workspace-store";
+import { getBillingWorkspace } from "../../../db/billing-store";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +10,8 @@ export async function GET() {
   if (!user) return Response.json({ error: "Sign in with ChatGPT to access workspace members." }, { status: 401 });
   try {
     const currentMember = await requireWorkspaceContext(user, ["owner", "admin", "quoter"]);
-    return Response.json({ members: await listWorkspaceMembers(currentMember.tenantId), currentRole: currentMember.role, seatLimit: 5 });
+    const billing = await getBillingWorkspace(currentMember.tenantId);
+    return Response.json({ members: await listWorkspaceMembers(currentMember.tenantId), currentRole: currentMember.role, seatLimit: billing.limits.seats });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Workspace membership is unavailable." }, { status: 403 });
   }

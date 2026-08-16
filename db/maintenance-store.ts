@@ -1,8 +1,8 @@
 const TENANT_TABLES = [
-  "api_access_log", "api_keys", "billing_subscriptions", "brand_profiles", "catalogue_items", "clients", "deal_redemptions",
+  "api_access_log", "api_keys", "billing_events", "billing_invoices", "billing_subscriptions", "brand_profiles", "catalogue_items", "clients", "deal_redemptions",
   "document_templates", "metered_events", "onboarding_state", "pdf_jobs", "personal_templates", "pricing_rule_sets", "quote_events", "quote_recipients", "quotes",
   "security_events", "stored_files", "tracking_events", "webhook_deliveries", "webhook_endpoints",
-  "tenant_cohorts", "workspace_entitlements", "workspace_members",
+  "operator_notes", "platform_admin_events", "tenant_cohorts", "tenant_entitlement_overrides", "workspace_entitlements", "workspace_members",
 ] as const;
 
 export async function runRetentionJobs() {

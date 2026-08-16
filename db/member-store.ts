@@ -87,10 +87,8 @@ export async function listWorkspaceMembers(tenantId: string) {
 export async function inviteWorkspaceMember(tenantId: string, email: string, role: Exclude<WorkspaceRole, "owner">, actorEmail: string) {
   await ensureMembers();
   const db = await database();
-  const usage = await db.prepare("SELECT COUNT(*) AS count FROM workspace_members WHERE tenant_id = ? AND status != 'Removed'")
-    .bind(tenantId).first<{ count: number }>();
-  const seatLimit = 5;
-  if ((usage?.count ?? 0) >= seatLimit) throw new Error(`The workspace seat limit is ${seatLimit}.`);
+  const { assertCapacity } = await import("./entitlement-store");
+  await assertCapacity(tenantId, "seats");
   const normalisedEmail = email.trim().toLowerCase();
   await db.prepare(`INSERT INTO workspace_members
       (tenant_id, email, display_name, role, status, invited_by, invited_at, expires_at)

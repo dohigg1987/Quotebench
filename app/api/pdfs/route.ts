@@ -3,6 +3,7 @@ import { completePdfJob, createPdfJob, failPdfJob, getPdfJob } from "../../../db
 import { getInternalQuote } from "../../../db/quote-store";
 import { meterEvent, requireWorkspaceContext } from "../../../db/workspace-store";
 import { renderProposalPdf } from "../../../lib/proposal-pdf";
+import { assertCapacity } from "../../../db/entitlement-store";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,7 @@ export async function POST(request: Request) {
     if (!body.reference) return Response.json({ error: "Quote reference is required." }, { status: 400 });
     const quote = await getInternalQuote(context.tenantId, body.reference);
     if (!quote) return Response.json({ error: "Quote not found." }, { status: 404 });
+    await assertCapacity(context.tenantId, "pdfs");
     const job = await createPdfJob(context.tenantId, body.reference, user.email);
     await meterEvent(context.tenantId, "pdf.generated", String(job.id));
     return Response.json({ job }, { status: 202 });
@@ -52,6 +54,7 @@ export async function GET(request: Request) {
           lines: quote.pricingSnapshot.lines,
           options: quote.document.options,
         });
+        await assertCapacity(context.tenantId, "storage", bytes.byteLength);
         await completePdfJob(context.tenantId, id, quote.reference, user.email, bytes);
       } catch (error) {
         await failPdfJob(context.tenantId, id, error instanceof Error ? error.message : "Generation failed.");

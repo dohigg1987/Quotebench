@@ -46,7 +46,7 @@ const EVENTS_SCHEMA = `CREATE TABLE IF NOT EXISTS quote_events (
 
 const ENTITLEMENTS_SCHEMA = `CREATE TABLE IF NOT EXISTS workspace_entitlements (
   tenant_id TEXT PRIMARY KEY,
-  plan_name TEXT NOT NULL DEFAULT 'Professional',
+  plan_name TEXT NOT NULL DEFAULT 'Trial',
   monthly_quote_limit INTEGER NOT NULL DEFAULT 50,
   active INTEGER NOT NULL DEFAULT 1,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -195,29 +195,17 @@ async function ensureSchema() {
 export async function getWorkspaceEntitlement(tenantId: string): Promise<WorkspaceEntitlement> {
   await ensureSchema();
   const db = await database();
-  await db.prepare(`INSERT OR IGNORE INTO workspace_entitlements
-      (tenant_id, plan_name, monthly_quote_limit, active)
-      VALUES (?, 'Professional', 50, 1)`)
-    .bind(tenantId)
-    .run();
-  const [entitlement, usage] = await Promise.all([
-    db.prepare("SELECT plan_name, monthly_quote_limit, active FROM workspace_entitlements WHERE tenant_id = ?")
-      .bind(tenantId)
-      .first<{ plan_name: string; monthly_quote_limit: number; active: number }>(),
-    db.prepare(`SELECT COUNT(*) AS count FROM quotes WHERE tenant_id = ?
+  const usage = await db.prepare(`SELECT COUNT(*) AS count FROM quotes WHERE tenant_id = ?
       AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')`)
       .bind(tenantId)
-      .first<{ count: number }>(),
-  ]);
-  if (!entitlement) throw new Error("Workspace entitlement is unavailable.");
+      .first<{ count: number }>();
   const { getBillingWorkspace } = await import("./billing-store");
   const billing = await getBillingWorkspace(tenantId);
-  const billingLimit = billing.limits?.quotes ?? 0;
   return {
-    planName: billingLimit > entitlement.monthly_quote_limit ? billing.effectivePlan : entitlement.plan_name,
-    monthlyQuoteLimit: Math.max(entitlement.monthly_quote_limit, billingLimit),
+    planName: billing.effectivePlan,
+    monthlyQuoteLimit: billing.limits.quotes,
     quotesUsedThisMonth: usage?.count ?? 0,
-    active: entitlement.active === 1,
+    active: billing.accessActive,
   };
 }
 
@@ -228,12 +216,8 @@ export async function assertQuoteCapacity(tenantId: string, reference: string) {
     .bind(tenantId, reference)
     .first();
   if (existing) return;
-  const entitlement = await getWorkspaceEntitlement(tenantId);
-  if (!entitlement.active) throw new Error("The workspace plan is inactive.");
-  const hardLimit = Math.ceil(entitlement.monthlyQuoteLimit * 1.1);
-  if (entitlement.quotesUsedThisMonth >= hardLimit) {
-    throw new Error(`Monthly quote hard limit reached (${hardLimit}, including the 10% grace band).`);
-  }
+  const { assertCapacity } = await import("./entitlement-store");
+  await assertCapacity(tenantId, "quotes");
 }
 
 export async function listQuotes(tenantId: string): Promise<StoredQuote[]> {

@@ -228,3 +228,70 @@ test("Every application surface participates in the shared fit and reflow contra
   assert.match(styles, /\.recipient-document \{[^}]*border-radius:20px[^}]*color:var\(--horizon-navy\)/);
   assert.match(styles, /@media \(max-width: 720px\)[\s\S]*\.recipient-accept \{ grid-template-columns:1fr;/);
 });
+
+test("Platform administration is a separate, server-gated multi-tenant control plane", async () => {
+  const page = await source("app/admin/page.tsx");
+  const shell = await source("app/quote-bench.tsx");
+  const route = await source("app/api/operator/route.ts");
+  const store = await source("db/operator-store.ts");
+  assert.match(page, /hasOperatorAccess/);
+  assert.match(page, /OperatorScreen/);
+  assert.match(shell, /operatorAccess && <a className="platform-admin-link" href="\/admin"/);
+  assert.match(route, /requireOperator/);
+  assert.match(store, /FROM tenants t LEFT JOIN billing_subscriptions/);
+  assert.doesNotMatch(store, /FROM tenant_cohorts c\s+LEFT JOIN tenants/);
+  for (const action of ["tenant.profile_updated", "tenant.archive_exported", "member.invited", "entitlement.override_set", "support.note_added"]) assert.match(store, new RegExp(action.replace(".", "\\.")));
+  assert.match(store, /before_json/);
+  assert.match(store, /after_json/);
+  assert.match(store, /reason/);
+});
+
+test("Commercial entitlements are unified and enforced at every chargeable boundary", async () => {
+  const plans = await source("db/plans.ts");
+  const entitlements = await source("db/entitlement-store.ts");
+  const clients = await source("db/client-store.ts");
+  const members = await source("db/member-store.ts");
+  const quotes = await source("db/quote-store.ts");
+  const uploads = await source("app/api/uploads/route.ts");
+  const pdfs = await source("app/api/pdfs/route.ts");
+  const delivery = await source("app/api/delivery/route.ts");
+  for (const plan of ["Trial", "Starter", "Professional", "Scale"]) assert.match(plans, new RegExp(`${plan}:`));
+  for (const metric of ["clients", "seats", "quotes", "pdfs", "emails", "storage"]) assert.match(entitlements, new RegExp(`${metric}:`));
+  assert.match(entitlements, /Math\.ceil\(target\.limit \* 1\.1\)/);
+  assert.match(clients, /assertCapacity\(tenantId, "clients"\)/);
+  assert.match(members, /assertCapacity\(tenantId, "seats"\)/);
+  assert.match(quotes, /assertCapacity\(tenantId, "quotes"\)/);
+  assert.match(uploads, /assertCapacity\(member\.tenantId,\s*"storage",\s*file\.size\)/);
+  assert.match(pdfs, /assertCapacity\([^,]+,\s*"pdfs"\)/);
+  assert.match(delivery, /assertCapacity\([^,]+,\s*"emails"/);
+  assert.doesNotMatch(quotes, /INSERT OR IGNORE INTO workspace_entitlements/);
+  assert.match(quotes, /DEFAULT 'Trial'/);
+});
+
+test("Billing lifecycle supports plan checkout, portal, signed idempotent webhooks and invoices", async () => {
+  const billing = await source("db/billing-store.ts");
+  const webhook = await source("app/api/billing/webhook/route.ts");
+  const operator = await source("app/operator-screen.tsx");
+  for (const price of ["STRIPE_PRICE_STARTER", "STRIPE_PRICE_PROFESSIONAL", "STRIPE_PRICE_SCALE"]) assert.match(billing, new RegExp(price));
+  assert.match(billing, /billing_portal\/sessions/);
+  assert.match(billing, /automatic_tax\[enabled\]/);
+  assert.match(webhook, /candidates = parts\.filter\(\(\[key\]\) => key === "v1"\)/);
+  assert.match(webhook, /Math\.abs\(Date\.now\(\) \/ 1000 - Number\(timestamp\)\) >= 300/);
+  assert.match(webhook, /SELECT id FROM billing_events WHERE provider_event_id=\?/);
+  assert.match(webhook, /event\.type\.startsWith\("invoice\."\)/);
+  assert.match(operator, /Invoice register/);
+  assert.match(operator, /Billing event stream/);
+});
+
+test("Operator customer records expose governed profile, user, support and security workflows", async () => {
+  const operator = await source("app/operator-screen.tsx");
+  const route = await source("app/api/operator/route.ts");
+  const styles = await source("app/globals.css");
+  for (const capability of ["Workspace profile", "Invite user", "Entitlement override", "Security evidence", "Platform administration history", "Export archive"]) assert.match(operator, new RegExp(capability));
+  assert.match(route, /customer_profile/);
+  assert.match(route, /member_invite/);
+  assert.match(route, /message\.startsWith\("forbidden:"\) \? 403/);
+  assert.match(styles, /\.operator-users-layout/);
+  assert.match(styles, /@media \(max-width: 1180px\)[\s\S]*\.operator-users-layout \{ grid-template-columns:1fr; \}/);
+  assert.match(styles, /@media \(max-width: 780px\)[\s\S]*\.operator-profile-grid/);
+});

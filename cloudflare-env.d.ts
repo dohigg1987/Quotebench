@@ -21,6 +21,9 @@ declare namespace Cloudflare {
     OPERATOR_EMAIL_SHA256?: string;
     PUBLIC_SITE_URL?: string;
     STRIPE_PRICE_ID?: string;
+    STRIPE_PRICE_STARTER?: string;
+    STRIPE_PRICE_PROFESSIONAL?: string;
+    STRIPE_PRICE_SCALE?: string;
     STRIPE_SECRET_KEY?: string;
     STRIPE_WEBHOOK_SECRET?: string;
   }

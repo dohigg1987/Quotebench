@@ -19,7 +19,6 @@ import DocumentsScreen from "./documents-screen";
 import DeliveryScreen from "./delivery-screen";
 import TemplatesScreen from "./templates-screen";
 import BillingScreen from "./billing-screen";
-import OperatorScreen from "./operator-screen";
 import GovernanceScreen from "./governance-screen";
 import ProposalEditor from "./proposal-editor";
 import CatalogueScreen from "./catalogue-screen";
@@ -30,7 +29,7 @@ import type { ProposalType, ServiceCategory } from "../db/catalogue-store";
 
 const CURRENT_DAY = new Date().toISOString().slice(0, 10);
 
-type Screen = "builder" | "quotes" | "clients" | "catalogue" | "rules" | "activity" | "integrations" | "team" | "usage" | "documents" | "delivery" | "templates" | "billing" | "governance" | "engagement" | "ai" | "operator";
+type Screen = "builder" | "quotes" | "clients" | "catalogue" | "rules" | "activity" | "integrations" | "team" | "usage" | "documents" | "delivery" | "templates" | "billing" | "governance" | "engagement" | "ai";
 type Workspace = { id:string; name:string; currency:string; role:"owner"|"admin"|"quoter" };
 type SelectedLine = { itemId: string; quantity: number; discount: number };
 type ClientRecord = {
@@ -120,12 +119,12 @@ function Status({ children }: { children: string }) {
   return <span className={`status status-${children.toLowerCase()}`}>{children}</span>;
 }
 
-function Sidebar({ screen, setScreen, currentUser, entitlement, mobileOpen, onClose }: { screen: Screen; setScreen: (screen: Screen) => void; currentUser: ChatGPTUser | null; entitlement: Entitlement | null; mobileOpen: boolean; onClose: () => void }) {
+function Sidebar({ screen, setScreen, currentUser, entitlement, mobileOpen, onClose, operatorAccess }: { screen: Screen; setScreen: (screen: Screen) => void; currentUser: ChatGPTUser | null; entitlement: Entitlement | null; mobileOpen: boolean; onClose: () => void; operatorAccess: boolean }) {
   const groups: Array<{ id: string; label: string; items: Array<{ key: Screen; label: string }> }> = [
     { id: "commercial", label: "Commercial", items: [{ key: "builder", label: "Quote builder" }, { key: "quotes", label: "Quotes" }, { key: "clients", label: "Clients" }, { key: "catalogue", label: "Services" }, { key: "rules", label: "Pricing rules" }] },
     { id: "content", label: "Content and governance", items: [{ key: "documents", label: "Documents and brand" }, { key: "templates", label: "Templates" }, { key: "engagement", label: "Engagement governance" }, { key: "ai", label: "AI assistance" }] },
     { id: "operations", label: "Operations", items: [{ key: "activity", label: "Activity" }, { key: "delivery", label: "Send and track" }] },
-    { id: "administration", label: "Administration", items: [{ key: "integrations", label: "Imports and integrations" }, { key: "team", label: "Team and roles" }, { key: "usage", label: "Usage and limits" }, { key: "billing", label: "Plans and billing" }, { key: "governance", label: "Privacy and security" }, { key: "operator", label: "Operator controls" }] },
+    { id: "administration", label: "Administration", items: [{ key: "integrations", label: "Imports and integrations" }, { key: "team", label: "Team and roles" }, { key: "usage", label: "Usage and limits" }, { key: "billing", label: "Plans and billing" }, { key: "governance", label: "Privacy and security" }] },
   ];
   const activeGroup = groups.find((group) => group.items.some((item) => item.key === screen))?.id ?? "commercial";
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ commercial: true, [activeGroup]: true });
@@ -139,6 +138,7 @@ function Sidebar({ screen, setScreen, currentUser, entitlement, mobileOpen, onCl
       <nav className="nav" aria-label="Primary navigation">
         {groups.map((group) => { const open = Boolean(openGroups[group.id]) || group.id === activeGroup; return <section className="nav-group" key={group.id}><button className="nav-group-trigger" aria-expanded={open} onClick={() => setOpenGroups((current) => ({ ...current, [group.id]: !open }))}><span>{group.label}</span><b aria-hidden="true">{open ? "−" : "+"}</b></button>{open && <div>{group.items.map((item) => <button key={item.key} onClick={() => navigate(item.key)} className={screen === item.key ? "nav-item active" : "nav-item"}><span className="nav-dot" aria-hidden="true" />{item.label}</button>)}</div>}</section>; })}
       </nav>
+      {operatorAccess && <a className="platform-admin-link" href="/admin"><span className="nav-dot" aria-hidden="true"/><span><strong>Platform administration</strong><small>Customers, billing and controls</small></span><b>↗</b></a>}
       <div className="sidebar-foot">
         <div className="usage-bar"><span style={{ width: `${Math.min(100, ((entitlement?.quotesUsedThisMonth ?? 0) / (entitlement?.monthlyQuoteLimit ?? 50)) * 100)}%` }} /></div>
         <p><strong>{entitlement?.quotesUsedThisMonth ?? 0}</strong> of {entitlement?.monthlyQuoteLimit ?? 50} quotes this month</p>
@@ -1009,7 +1009,7 @@ function ActivityScreen({ events }: { events: SavedEvent[] }) {
   );
 }
 
-export default function QuoteBench({ currentUser }: { currentUser: ChatGPTUser | null }) {
+export default function QuoteBench({ currentUser, operatorAccess = false }: { currentUser: ChatGPTUser | null; operatorAccess?: boolean }) {
   const [screen, setScreen] = useState<Screen>("builder");
   const [activeReference, setActiveReference] = useState("QB-1049");
   const [activeQuote, setActiveQuote] = useState<EditableQuote | null>(null);
@@ -1122,7 +1122,7 @@ export default function QuoteBench({ currentUser }: { currentUser: ChatGPTUser |
 
   return (
     <div className={`app-shell ${mobileNavigationOpen ? "navigation-open" : ""}`}>
-      <Sidebar screen={screen} setScreen={setScreen} currentUser={currentUser} entitlement={entitlement} mobileOpen={mobileNavigationOpen} onClose={()=>setMobileNavigationOpen(false)} />
+      <Sidebar screen={screen} setScreen={setScreen} currentUser={currentUser} entitlement={entitlement} mobileOpen={mobileNavigationOpen} onClose={()=>setMobileNavigationOpen(false)} operatorAccess={operatorAccess} />
       {mobileNavigationOpen&&<button className="navigation-backdrop" aria-label="Close navigation" onClick={()=>setMobileNavigationOpen(false)}/>}
       <div className="main-shell">
         <Topbar workspace={workspace} workspaces={workspaces.length?workspaces:workspace?[workspace]:[]} onOpenNavigation={()=>setMobileNavigationOpen(true)} />
@@ -1143,7 +1143,6 @@ export default function QuoteBench({ currentUser }: { currentUser: ChatGPTUser |
           {screen === "ai" && <AiAssistanceScreen />}
           {screen === "billing" && <BillingScreen />}
           {screen === "governance" && <GovernanceScreen />}
-          {screen === "operator" && <OperatorScreen />}
         </main>
       </div>
     </div>
