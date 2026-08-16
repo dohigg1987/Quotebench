@@ -106,44 +106,24 @@ function Status({ children }: { children: string }) {
   return <span className={`status status-${children.toLowerCase()}`}>{children}</span>;
 }
 
-function Sidebar({ screen, setScreen, currentUser, entitlement }: { screen: Screen; setScreen: (screen: Screen) => void; currentUser: ChatGPTUser | null; entitlement: Entitlement | null }) {
-  const navigation: Array<{ key: Screen; label: string; mark: string }> = [
-    { key: "builder", label: "Quote builder", mark: "+" },
-    { key: "quotes", label: "Quotes", mark: "Q" },
-    { key: "clients", label: "Clients", mark: "L" },
-    { key: "catalogue", label: "Services", mark: "S" },
-    { key: "rules", label: "Pricing rules", mark: "R" },
-    { key: "documents", label: "Documents & brand", mark: "D" },
-    { key: "templates", label: "Templates & setup", mark: "P" },
-    { key: "engagement", label: "Engagement governance", mark: "E" },
-    { key: "ai", label: "AI assistance", mark: "AI" },
-    { key: "activity", label: "Activity", mark: "A" },
-    { key: "delivery", label: "Send & track", mark: "S" },
-    { key: "integrations", label: "Imports & exports", mark: "I" },
-    { key: "team", label: "Team & roles", mark: "T" },
-    { key: "usage", label: "Usage & limits", mark: "U" },
-    { key: "billing", label: "Plans & billing", mark: "B" },
-    { key: "governance", label: "Privacy & security", mark: "G" },
-    { key: "operator", label: "Operator cohort", mark: "O" },
+function Sidebar({ screen, setScreen, currentUser, entitlement, mobileOpen, onClose }: { screen: Screen; setScreen: (screen: Screen) => void; currentUser: ChatGPTUser | null; entitlement: Entitlement | null; mobileOpen: boolean; onClose: () => void }) {
+  const groups: Array<{ id: string; label: string; items: Array<{ key: Screen; label: string }> }> = [
+    { id: "commercial", label: "Commercial", items: [{ key: "builder", label: "Quote builder" }, { key: "quotes", label: "Quotes" }, { key: "clients", label: "Clients" }, { key: "catalogue", label: "Services" }, { key: "rules", label: "Pricing rules" }] },
+    { id: "content", label: "Content and governance", items: [{ key: "documents", label: "Documents and brand" }, { key: "templates", label: "Templates" }, { key: "engagement", label: "Engagement governance" }, { key: "ai", label: "AI assistance" }] },
+    { id: "operations", label: "Operations", items: [{ key: "activity", label: "Activity" }, { key: "delivery", label: "Send and track" }] },
+    { id: "administration", label: "Administration", items: [{ key: "integrations", label: "Imports and integrations" }, { key: "team", label: "Team and roles" }, { key: "usage", label: "Usage and limits" }, { key: "billing", label: "Plans and billing" }, { key: "governance", label: "Privacy and security" }, { key: "operator", label: "Operator controls" }] },
   ];
+  const activeGroup = groups.find((group) => group.items.some((item) => item.key === screen))?.id ?? "commercial";
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ commercial: true, [activeGroup]: true });
+  function navigate(next: Screen) { setScreen(next); onClose(); }
   return (
-    <aside className="sidebar">
-      <button className="brand" onClick={() => setScreen("builder")} aria-label="QuoteBench home">
+    <aside className={`sidebar ${mobileOpen ? "mobile-open" : ""}`}>
+      <div className="sidebar-brand-row"><button className="brand" onClick={() => navigate("builder")} aria-label="QuoteBench home">
         <span className="brand-mark">Q</span>
-        <span>QuoteBench</span>
-      </button>
+        <span><strong>QuoteBench</strong><small>Commercial workspace</small></span>
+      </button><button className="nav-close" onClick={onClose} aria-label="Close navigation">×</button></div>
       <nav className="nav" aria-label="Primary navigation">
-        <p className="nav-label">Workspace</p>
-        {navigation.map((item) => (
-          <button
-            key={item.key}
-            onClick={() => setScreen(item.key)}
-            className={screen === item.key ? "nav-item active" : "nav-item"}
-          >
-            <span className="nav-mark" aria-hidden="true">{item.mark}</span>
-            {item.label}
-          </button>
-        ))}
+        {groups.map((group) => { const open = Boolean(openGroups[group.id]) || group.id === activeGroup; return <section className="nav-group" key={group.id}><button className="nav-group-trigger" aria-expanded={open} onClick={() => setOpenGroups((current) => ({ ...current, [group.id]: !open }))}><span>{group.label}</span><b aria-hidden="true">{open ? "−" : "+"}</b></button>{open && <div>{group.items.map((item) => <button key={item.key} onClick={() => navigate(item.key)} className={screen === item.key ? "nav-item active" : "nav-item"}><span className="nav-dot" aria-hidden="true" />{item.label}</button>)}</div>}</section>; })}
       </nav>
       <div className="sidebar-foot">
         <div className="usage-bar"><span style={{ width: `${Math.min(100, ((entitlement?.quotesUsedThisMonth ?? 0) / (entitlement?.monthlyQuoteLimit ?? 50)) * 100)}%` }} /></div>
@@ -166,11 +146,11 @@ function Sidebar({ screen, setScreen, currentUser, entitlement }: { screen: Scre
   );
 }
 
-function Topbar({ workspace, workspaces }: { workspace:Workspace|null; workspaces:Workspace[] }) {
+function Topbar({ workspace, workspaces, onOpenNavigation }: { workspace:Workspace|null; workspaces:Workspace[]; onOpenNavigation:()=>void }) {
   async function selectWorkspace(id:string){await fetch("/api/workspaces",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"select",tenantId:id})});window.location.reload();}
   return (
     <header className="topbar">
-      <label className="workspace-switcher"><span className="workspace-dot">{workspace?.name?.charAt(0).toUpperCase()??"Q"}</span><select aria-label="Current workspace" value={workspace?.id??""} onChange={event=>void selectWorkspace(event.target.value)}>{workspaces.length?workspaces.map(item=><option value={item.id} key={item.id}>{item.name}</option>):<option value="">QuoteBench workspace</option>}</select></label>
+      <div className="topbar-start"><button className="mobile-menu" onClick={onOpenNavigation} aria-label="Open navigation"><span/><span/><span/></button><label className="workspace-switcher"><span className="workspace-dot">{workspace?.name?.charAt(0).toUpperCase()??"Q"}</span><select aria-label="Current workspace" value={workspace?.id??""} onChange={event=>void selectWorkspace(event.target.value)}>{workspaces.length?workspaces.map(item=><option value={item.id} key={item.id}>{item.name}</option>):<option value="">QuoteBench workspace</option>}</select></label></div>
       <div className="top-actions">
         <button className="top-icon" aria-label="Search">⌕</button>
         <button className="top-icon notification" aria-label="Notifications">○</button>
@@ -851,6 +831,7 @@ export default function QuoteBench({ currentUser }: { currentUser: ChatGPTUser |
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [quotesLoading, setQuotesLoading] = useState(Boolean(currentUser));
   const [storageMessage, setStorageMessage] = useState<string | null>(currentUser ? null : "Sign in with ChatGPT to load and save durable workspace quotes.");
+  const [mobileNavigationOpen,setMobileNavigationOpen]=useState(false);
   const currentUserEmail = currentUser?.email;
 
   function startNewQuote() {
@@ -945,10 +926,11 @@ export default function QuoteBench({ currentUser }: { currentUser: ChatGPTUser |
   useEffect(()=>{if(!currentUserEmail)return;fetch("/api/workspaces",{cache:"no-store"}).then(async response=>(await response.json()) as {workspaces?:Array<Record<string,unknown>>}).then(payload=>setWorkspaces((payload.workspaces??[]).map(row=>({id:String(row.id),name:String(row.name),currency:String(row.currency),role:String(row.role) as Workspace["role"]})))).catch(()=>undefined);},[currentUserEmail]);
 
   return (
-    <div className="app-shell">
-      <Sidebar screen={screen} setScreen={setScreen} currentUser={currentUser} entitlement={entitlement} />
+    <div className={`app-shell ${mobileNavigationOpen ? "navigation-open" : ""}`}>
+      <Sidebar screen={screen} setScreen={setScreen} currentUser={currentUser} entitlement={entitlement} mobileOpen={mobileNavigationOpen} onClose={()=>setMobileNavigationOpen(false)} />
+      {mobileNavigationOpen&&<button className="navigation-backdrop" aria-label="Close navigation" onClick={()=>setMobileNavigationOpen(false)}/>}
       <div className="main-shell">
-        <Topbar workspace={workspace} workspaces={workspaces.length?workspaces:workspace?[workspace]:[]} />
+        <Topbar workspace={workspace} workspaces={workspaces.length?workspaces:workspace?[workspace]:[]} onOpenNavigation={()=>setMobileNavigationOpen(true)} />
         <main className="main-content">
           {screen === "builder" && <QuoteBuilder key={activeReference} reference={activeReference} initialQuote={activeQuote} clients={clients} catalogueItems={workspaceCatalogue} catalogueCategories={catalogueCategories} proposalTypes={proposalTypes} ruleSet={activeRuleSet} onSaved={refreshQuotes} onRevised={openRevision} />}
           {screen === "quotes" && <QuotesScreen onCreate={startNewQuote} onOpen={openQuote} savedQuotes={savedQuotes} loading={quotesLoading} storageMessage={storageMessage} />}
