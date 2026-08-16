@@ -26,6 +26,7 @@ import type { DocumentPage, DocumentTemplate } from "../db/document-store";
 import type { ProposalType, ServiceCategory } from "../db/catalogue-store";
 import { resolveProposalText, type ProposalMetadata } from "../lib/proposal-metadata";
 import { GovernanceCheck, WorkflowSteps, type WorkflowStep } from "./ui/system";
+import { QuoteBenchMark } from "./ui/brand";
 import WorkspaceErrorBoundary from "./workspace-error-boundary";
 
 const ProposalEditor = lazy(() => import("./proposal-editor"));
@@ -171,7 +172,7 @@ function Sidebar({ screen, setScreen, currentUser, entitlement, mobileOpen, onCl
   return (
     <aside className={`sidebar ${mobileOpen ? "mobile-open" : ""}`}>
       <div className="sidebar-brand-row"><button className="brand" onClick={() => navigate("builder")} aria-label="QuoteBench home">
-        <span className="brand-mark">Q</span>
+        <QuoteBenchMark />
         <span><strong>QuoteBench</strong><small>Commercial workspace</small></span>
       </button><button className="nav-close" onClick={onClose} aria-label="Close navigation">×</button></div>
       <nav className="nav" aria-label="Primary navigation">
