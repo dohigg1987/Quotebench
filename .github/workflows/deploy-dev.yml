@@ -1,0 +1,21 @@
+name: Deploy QuoteBench to dev
+
+on:
+  workflow_run:
+    workflows: ["QuoteBench CI"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  deploy-dev:
+    if: github.event.workflow_run.conclusion == 'success'
+    uses: ./.github/workflows/promote.yml
+    with:
+      target: dev
+      commit: ${{ github.event.workflow_run.head_sha }}
+    secrets: inherit

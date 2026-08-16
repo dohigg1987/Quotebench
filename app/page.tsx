@@ -5,12 +5,12 @@ import { QuoteBenchLogo } from "./ui/brand";
 
 export const dynamic = "force-dynamic";
 
-const screens = new Set<Screen>(["builder", "quotes", "clients", "catalogue", "rules", "activity", "integrations", "team", "usage", "documents", "delivery", "templates", "billing", "governance", "engagement", "ai"]);
+const screens = new Set<Screen>(["overview", "builder", "quotes", "clients", "catalogue", "rules", "activity", "integrations", "team", "usage", "documents", "delivery", "templates", "billing", "governance", "engagement", "ai"]);
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ screen?: string }> }) {
   const requestedScreen = (await searchParams).screen;
-  const initialScreen = requestedScreen && screens.has(requestedScreen as Screen) ? requestedScreen as Screen : "builder";
-  const returnTo = initialScreen === "builder" ? "/" : `/?screen=${initialScreen}`;
+  const initialScreen = requestedScreen && screens.has(requestedScreen as Screen) ? requestedScreen as Screen : "overview";
+  const returnTo = initialScreen === "overview" ? "/" : `/?screen=${initialScreen}`;
   const user = await getCurrentUser();
   if (!user) {
     return (

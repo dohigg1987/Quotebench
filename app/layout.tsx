@@ -2,13 +2,11 @@ import type { Metadata } from "next";
 import "./globals.css";
 import "./design-system.css";
 import "./horizon-premium.css";
+import "./commercial-grade.css";
 
 export const metadata: Metadata = {
   title: "QuoteBench",
   description: "Governed pricing and quoting for service and product businesses.",
-  other: {
-    "codex-preview": "development",
-  },
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },

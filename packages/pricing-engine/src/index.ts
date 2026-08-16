@@ -325,7 +325,8 @@ function elapsedIndexationCycles(policy: IndexationPolicy | undefined, asOfDate?
   const base = new Date(`${policy.baseDate}T00:00:00Z`);
   const asOf = new Date(`${asOfDate}T00:00:00Z`);
   if (!Number.isFinite(base.getTime()) || !Number.isFinite(asOf.getTime()) || asOf <= base) return 0;
-  const months = (asOf.getUTCFullYear() - base.getUTCFullYear()) * 12 + asOf.getUTCMonth() - base.getUTCMonth();
+  const calendarMonths = (asOf.getUTCFullYear() - base.getUTCFullYear()) * 12 + asOf.getUTCMonth() - base.getUTCMonth();
+  const months = calendarMonths - (asOf.getUTCDate() < base.getUTCDate() ? 1 : 0);
   return Math.max(0, Math.floor(months / policy.intervalMonths));
 }
 

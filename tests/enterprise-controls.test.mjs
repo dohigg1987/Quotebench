@@ -176,7 +176,7 @@ test("Advanced CPQ, engagement governance, ordered e-signature and BYO AI are in
 test("Enterprise shell groups navigation and contains the quote layout responsively", async () => {
   const quoteBench = await source("app/quote-bench.tsx");
   const css = await source("app/globals.css");
-  for (const group of ["Commercial", "Content and governance", "Operations", "Administration"]) assert.match(quoteBench, new RegExp(group));
+  for (const group of ["Commercial", "Commercial foundation", "Operations", "Workspace"]) assert.match(quoteBench, new RegExp(group));
   assert.match(quoteBench, /aria-expanded/);
   assert.match(quoteBench, /navigation-backdrop/);
   assert.match(css, /grid-template-columns:minmax\(0,1fr\) minmax\(300px,340px\)/);
@@ -185,6 +185,40 @@ test("Enterprise shell groups navigation and contains the quote layout responsiv
   assert.match(css, /\.line-table \{[^}]*overflow-x:auto/);
   assert.match(css, /@media \(max-width: 1024px\)[\s\S]*transform:translateX\(-105%\)/);
 });
+
+test("Commercial workspace opens on a data-led overview", async () => {
+  const quoteBench = await source("app/quote-bench.tsx");
+  const page = await source("app/page.tsx");
+  const layout = await source("app/layout.tsx");
+  for (const capability of ["OverviewScreen", "Active pipeline", "Decision rate", "Quote progression", "Workspace readiness", "Recent activity"]) {
+    assert.match(quoteBench, new RegExp(capability));
+  }
+  assert.match(quoteBench, /if \(screen === "overview"\) url\.searchParams\.delete\("screen"\)/);
+  assert.match(page, /const initialScreen = requestedScreen[\s\S]*: "overview"/);
+  assert.match(page, /initialScreen=\{initialScreen\}/);
+  assert.match(layout, /commercial-grade\.css/);
+  assert.doesNotMatch(layout, /codex-preview/);
+});
+
+test("Search, notifications and help are functional workspace utilities", async () => {
+  const quoteBench = await source("app/quote-bench.tsx");
+  for (const component of ["SearchPalette", "NotificationsPanel", "HelpPanel", "UtilityLayer"]) assert.match(quoteBench, new RegExp(component));
+  for (const action of ["onSearch", "onNotifications", "onHelp", "setNotificationsSeen", "onOpenQuote"]) assert.match(quoteBench, new RegExp(action));
+  assert.match(quoteBench, /event\.key\.toLowerCase\(\)==="k"/);
+  assert.match(quoteBench, /event\.key==="Escape"/);
+  assert.match(quoteBench, /aria-modal="true"/);
+  assert.match(quoteBench, /mailto:dennis\.ohiggins@gmail\.com/);
+});
+
+test("Commercial design layer contains desktop, mobile and reduced-motion safeguards", async () => {
+  const styles = await source("app/commercial-grade.css");
+  for (const selector of [".sidebar", ".topbar", ".overview-hero", ".overview-metrics", ".pipeline-chart", ".utility-layer", ".utility-panel"]) {
+    assert.match(styles, new RegExp(selector.replace(".", "\\.")));
+  }
+  assert.match(styles, /@media \(max-width: 1100px\)/);
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+}
+);
 
 test("Quote summary uses one structural content inset", async () => {
   const component = await source("app/quote-bench.tsx");
