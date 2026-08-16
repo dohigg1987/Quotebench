@@ -179,3 +179,29 @@ test("Quote-builder internals use container-responsive layouts", async () => {
   assert.match(styles, /\.proposal-design-footer\s*\{[^}]*position:sticky/);
   assert.match(styles, /\.button:disabled,\.proposal-support-actions \.disabled-upload\s*\{[^}]*opacity:1/);
 });
+
+test("Final review and issue is a governed Horizon workflow stage", async () => {
+  const quoteBuilder = await source("app/quote-bench.tsx");
+  const quoteRoute = await source("app/api/quotes/route.ts");
+  const styles = await source("app/globals.css");
+  assert.match(quoteBuilder, /"commercial"\s*\|\s*"proposal"\s*\|\s*"review"/);
+  for (const capability of ["review-issue-page", "Readiness assessment", "Commercial snapshot", "Approval and issue", "Files and PDF", "ProposalDocument", "copyRecipientLink"]) assert.match(quoteBuilder, new RegExp(capability));
+  assert.match(quoteBuilder, /attempt < 10/);
+  assert.match(quoteBuilder, /if \(issuing \|\| lifecycleStatus !== "Ready"\) return/);
+  assert.match(quoteRoute, /requiredBlocks = \["pricing_table", "terms", "signature"\]/);
+  assert.match(quoteRoute, /validity date must not have passed/);
+  assert.match(styles, /\.review-issue-grid\s*\{[^}]*grid-template-columns:minmax\(0,1\.6fr\) minmax\(340px,\.7fr\)/);
+  assert.match(styles, /@container review-document \(max-width: 820px\)/);
+  assert.match(styles, /\.horizon-client-document\s*\{/);
+});
+
+test("Proposal page and block mutations preserve selection, identity and governance", async () => {
+  const editor = await source("app/proposal-editor.tsx");
+  assert.match(editor, /function cloneBlock[\s\S]*items:block\.items\?\.map\(item=>\(\{\.\.\.item,id:crypto\.randomUUID\(\)\}\)\)/);
+  assert.match(editor, /const addPage=.*setSelectedId\(nextPage\.id\)/);
+  assert.match(editor, /const duplicatePage=.*blocks:page\.blocks\.map\(cloneBlock\).*setSelectedId\(copy\.id\)/);
+  assert.match(editor, /const removePage=.*setSelectedId\(next\[Math\.min\(pageIndex,next\.length-1\)\]\.id\)/);
+  assert.match(editor, /onClick=\{\(\)=>duplicateBlock\(index\)\}/);
+  assert.match(editor, /disabled=\{pages\.length>=40\}/);
+  assert.match(editor, /disabled=\{page\.blocks\.length>=60\}/);
+});
