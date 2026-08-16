@@ -42,6 +42,7 @@ export async function GET(request: Request) {
           reference: quote.reference,
           clientName: quote.clientName,
           contactName: quote.contactName,
+          contactEmail: quote.contactEmail ?? undefined,
           validUntil: quote.validUntil,
           currency: quote.currency,
           oneOffTotalMinor: quote.oneOffTotalMinor,

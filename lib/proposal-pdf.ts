@@ -1,3 +1,5 @@
+import { resolveProposalText, type ProposalMetadata } from "./proposal-metadata.ts";
+
 type ProposalLine = {
   itemName: string;
   quantity: number;
@@ -29,6 +31,7 @@ export type ProposalPdfInput = {
   reference: string;
   clientName: string;
   contactName: string;
+  contactEmail?: string;
   validUntil: string;
   currency: string;
   oneOffTotalMinor: number;
@@ -109,10 +112,20 @@ function pageBackground(background: ProposalPage["background"], width: number, h
 
 function contentLines(input: ProposalPdfInput, page: ProposalPage): TextLine[] {
   const lines: TextLine[] = [];
+  const metadata: ProposalMetadata = {
+    clientName: input.clientName,
+    contactName: input.contactName,
+    contactEmail: input.contactEmail,
+    quoteReference: input.reference,
+    proposalTitle: input.title,
+    validUntil: input.validUntil,
+    currency: input.currency,
+    brandName: input.brandName,
+  };
   for (const block of page.blocks.filter((entry) => entry.enabled !== false)) {
     if (block.type === "spacer") { lines.push({ text: "", after: 18 }); continue; }
-    if (block.eyebrow) lines.push({ text: block.eyebrow.toUpperCase(), size: 8, bold: true, before: 10, after: 3, colour: [0.12, 0.38, 0.4] });
-    if (block.title) lines.push({ text: block.title, size: 16, bold: true, before: 8, after: 7 });
+    if (block.eyebrow) lines.push({ text: (resolveProposalText(block.eyebrow, metadata) ?? block.eyebrow).toUpperCase(), size: 8, bold: true, before: 10, after: 3, colour: [0.12, 0.38, 0.4] });
+    if (block.title) lines.push({ text: resolveProposalText(block.title, metadata) ?? block.title, size: 16, bold: true, before: 8, after: 7 });
 
     if (block.type === "pricing_table") {
       if (block.display !== "totals") {
@@ -138,8 +151,8 @@ function contentLines(input: ProposalPdfInput, page: ProposalPage): TextLine[] {
 
     if (["feature_grid", "timeline", "team", "faq"].includes(block.type)) {
       for (const item of block.items ?? []) {
-        lines.push({ text: item.title, size: 11, bold: true, before: 6, after: 2 });
-        lines.push({ text: item.content, indent: 10, after: 4 });
+        lines.push({ text: resolveProposalText(item.title, metadata) ?? item.title, size: 11, bold: true, before: 6, after: 2 });
+        lines.push({ text: resolveProposalText(item.content, metadata) ?? item.content, indent: 10, after: 4 });
       }
       continue;
     }
@@ -153,10 +166,10 @@ function contentLines(input: ProposalPdfInput, page: ProposalPage): TextLine[] {
     }
     if (block.type === "video") {
       lines.push({ text: "Video available in the secure online proposal.", size: 9, after: 8, colour: [0.35, 0.35, 0.35] });
-      if (block.content) lines.push({ text: block.content, after: 5 });
+      if (block.content) lines.push({ text: resolveProposalText(block.content, metadata) ?? block.content, after: 5 });
       continue;
     }
-    if (block.content) lines.push({ text: block.content, after: 7 });
+    if (block.content) lines.push({ text: resolveProposalText(block.content, metadata) ?? block.content, after: 7 });
   }
   return lines;
 }

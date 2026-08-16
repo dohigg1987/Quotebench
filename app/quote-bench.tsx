@@ -2,7 +2,7 @@
 /* Proposal images are tenant-controlled R2 objects and preserve their authored dimensions. */
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   money,
   type CatalogueItem,
@@ -17,19 +17,23 @@ import TeamScreen from "./team-screen";
 import UsageScreen from "./usage-screen";
 import DocumentsScreen from "./documents-screen";
 import DeliveryScreen from "./delivery-screen";
-import TemplatesScreen from "./templates-screen";
 import BillingScreen from "./billing-screen";
 import GovernanceScreen from "./governance-screen";
-import ProposalEditor from "./proposal-editor";
 import CatalogueScreen from "./catalogue-screen";
 import EngagementScreen from "./engagement-screen";
 import AiAssistanceScreen from "./ai-assistance-screen";
 import type { DocumentPage, DocumentTemplate } from "../db/document-store";
 import type { ProposalType, ServiceCategory } from "../db/catalogue-store";
+import { resolveProposalText, type ProposalMetadata } from "../lib/proposal-metadata";
+import { GovernanceCheck, WorkflowSteps, type WorkflowStep } from "./ui/system";
+import WorkspaceErrorBoundary from "./workspace-error-boundary";
+
+const ProposalEditor = lazy(() => import("./proposal-editor"));
+const TemplatesScreen = lazy(() => import("./templates-screen"));
 
 const CURRENT_DAY = new Date().toISOString().slice(0, 10);
 
-type Screen = "builder" | "quotes" | "clients" | "catalogue" | "rules" | "activity" | "integrations" | "team" | "usage" | "documents" | "delivery" | "templates" | "billing" | "governance" | "engagement" | "ai";
+export type Screen = "builder" | "quotes" | "clients" | "catalogue" | "rules" | "activity" | "integrations" | "team" | "usage" | "documents" | "delivery" | "templates" | "billing" | "governance" | "engagement" | "ai";
 type Workspace = { id:string; name:string; currency:string; role:"owner"|"admin"|"quoter" };
 type SelectedLine = { itemId: string; quantity: number; discount: number };
 type ClientRecord = {
@@ -83,6 +87,41 @@ type SavedEvent = {
 };
 type Entitlement = { planName: string; monthlyQuoteLimit: number; quotesUsedThisMonth: number; active: boolean };
 type QuoteFile = { id: string; filename: string; contentType: string; sizeBytes: number; kind: string };
+export type BuilderStep = "client" | "services" | "proposal" | "governance" | "review";
+type HorizonIconName = "builder" | "quotes" | "clients" | "services" | "rules" | "documents" | "templates" | "engagement" | "ai" | "activity" | "delivery" | "integrations" | "team" | "usage" | "billing" | "governance" | "admin" | "search" | "notification";
+
+const screenTitles: Record<Screen, string> = {
+  builder: "Quote builder", quotes: "Quotes", clients: "Clients", catalogue: "Services", rules: "Pricing rules",
+    documents: "Brand and delivery", templates: "Templates", engagement: "Engagement governance", ai: "AI assistance",
+  activity: "Activity", delivery: "Send and track", integrations: "Imports and integrations", team: "Team and roles",
+  usage: "Usage and limits", billing: "Plans and billing", governance: "Privacy and security",
+};
+
+function HorizonIcon({ name }: { name: HorizonIconName }) {
+  const common = { width: 19, height: 19, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
+  const paths: Record<HorizonIconName, React.ReactNode> = {
+    builder: <><path d="M7 3h8l4 4v14H7z"/><path d="M15 3v5h5M10 13h6M13 10v6"/></>,
+    quotes: <><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></>,
+    clients: <><circle cx="9" cy="8" r="3"/><path d="M3.5 20c.4-4 2.2-6 5.5-6s5.1 2 5.5 6M16 6.5a2.5 2.5 0 0 1 0 5M16.5 14c2.4.4 3.7 2.2 4 5"/></>,
+    services: <><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></>,
+    rules: <><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="17" r="2"/></>,
+    documents: <><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v5h5M9 12h7M9 16h7"/></>,
+    templates: <><path d="m12 3 8 4-8 4-8-4z"/><path d="m4 12 8 4 8-4M4 17l8 4 8-4"/></>,
+    engagement: <><path d="M12 3 20 6v5c0 5-3.4 8.5-8 10-4.6-1.5-8-5-8-10V6z"/><path d="m9 12 2 2 4-5"/></>,
+    ai: <><path d="m12 3 1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z"/><path d="m18.5 15 .8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></>,
+    activity: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></>,
+    delivery: <><path d="m3 11 18-8-7 18-3-7z"/><path d="m11 14 4-4"/></>,
+    integrations: <><path d="M8 7h9a4 4 0 0 1 0 8h-2M16 17H7a4 4 0 0 1 0-8h2"/><path d="m6 5 2 2-2 2M18 13l-2 2 2 2"/></>,
+    team: <><circle cx="8" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M2.5 20c.4-4 2.2-6 5.5-6s5.1 2 5.5 6M14 15c3.8-.3 6.1 1.4 6.5 5"/></>,
+    usage: <><path d="M5 19a9 9 0 1 1 14 0"/><path d="m12 12 4-4M8 19h8"/></>,
+    billing: <><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 10h18M7 15h4"/></>,
+    governance: <><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></>,
+    admin: <><circle cx="12" cy="12" r="3"/><path d="M19 13.5v-3l-2-.6-.7-1.7 1-1.9-2.1-2.1-1.9 1-1.7-.7L11 2H8l-.6 2.5-1.7.7-1.9-1-2.1 2.1 1 1.9L2 9.9v3l2.5.6.7 1.7-1 1.9 2.1 2.1 1.9-1 1.7.7.6 2.1h3l.6-2.1 1.7-.7 1.9 1 2.1-2.1-1-1.9z"/></>,
+    search: <><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></>,
+    notification: <><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></>,
+  };
+  return <svg {...common}>{paths[name]}</svg>;
+}
 
 const labels: Record<Frequency, string> = {
   one_off: "One-off",
@@ -120,11 +159,11 @@ function Status({ children }: { children: string }) {
 }
 
 function Sidebar({ screen, setScreen, currentUser, entitlement, mobileOpen, onClose, operatorAccess }: { screen: Screen; setScreen: (screen: Screen) => void; currentUser: ChatGPTUser | null; entitlement: Entitlement | null; mobileOpen: boolean; onClose: () => void; operatorAccess: boolean }) {
-  const groups: Array<{ id: string; label: string; items: Array<{ key: Screen; label: string }> }> = [
-    { id: "commercial", label: "Commercial", items: [{ key: "builder", label: "Quote builder" }, { key: "quotes", label: "Quotes" }, { key: "clients", label: "Clients" }, { key: "catalogue", label: "Services" }, { key: "rules", label: "Pricing rules" }] },
-    { id: "content", label: "Content and governance", items: [{ key: "documents", label: "Documents and brand" }, { key: "templates", label: "Templates" }, { key: "engagement", label: "Engagement governance" }, { key: "ai", label: "AI assistance" }] },
-    { id: "operations", label: "Operations", items: [{ key: "activity", label: "Activity" }, { key: "delivery", label: "Send and track" }] },
-    { id: "administration", label: "Administration", items: [{ key: "integrations", label: "Imports and integrations" }, { key: "team", label: "Team and roles" }, { key: "usage", label: "Usage and limits" }, { key: "billing", label: "Plans and billing" }, { key: "governance", label: "Privacy and security" }] },
+  const groups: Array<{ id: string; label: string; items: Array<{ key: Screen; label: string; icon: HorizonIconName }> }> = [
+    { id: "commercial", label: "Commercial", items: [{ key: "builder", label: "Quote builder", icon: "builder" }, { key: "quotes", label: "Quotes", icon: "quotes" }, { key: "clients", label: "Clients", icon: "clients" }, { key: "catalogue", label: "Services", icon: "services" }, { key: "rules", label: "Pricing rules", icon: "rules" }] },
+    { id: "content", label: "Content and governance", items: [{ key: "templates", label: "Templates", icon: "templates" }, { key: "documents", label: "Brand and delivery", icon: "documents" }, { key: "engagement", label: "Engagement governance", icon: "engagement" }, { key: "ai", label: "AI assistance", icon: "ai" }] },
+    { id: "operations", label: "Operations", items: [{ key: "activity", label: "Activity", icon: "activity" }, { key: "delivery", label: "Send and track", icon: "delivery" }] },
+    { id: "administration", label: "Administration", items: [{ key: "integrations", label: "Imports and integrations", icon: "integrations" }, { key: "team", label: "Team and roles", icon: "team" }, { key: "usage", label: "Usage and limits", icon: "usage" }, { key: "billing", label: "Plans and billing", icon: "billing" }, { key: "governance", label: "Privacy and security", icon: "governance" }] },
   ];
   const activeGroup = groups.find((group) => group.items.some((item) => item.key === screen))?.id ?? "commercial";
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ commercial: true, [activeGroup]: true });
@@ -136,9 +175,9 @@ function Sidebar({ screen, setScreen, currentUser, entitlement, mobileOpen, onCl
         <span><strong>QuoteBench</strong><small>Commercial workspace</small></span>
       </button><button className="nav-close" onClick={onClose} aria-label="Close navigation">×</button></div>
       <nav className="nav" aria-label="Primary navigation">
-        {groups.map((group) => { const open = Boolean(openGroups[group.id]) || group.id === activeGroup; return <section className="nav-group" key={group.id}><button className="nav-group-trigger" aria-expanded={open} onClick={() => setOpenGroups((current) => ({ ...current, [group.id]: !open }))}><span>{group.label}</span><b aria-hidden="true">{open ? "−" : "+"}</b></button>{open && <div>{group.items.map((item) => <button key={item.key} onClick={() => navigate(item.key)} className={screen === item.key ? "nav-item active" : "nav-item"}><span className="nav-dot" aria-hidden="true" />{item.label}</button>)}</div>}</section>; })}
+        {groups.map((group) => { const open = Boolean(openGroups[group.id]) || group.id === activeGroup; return <section className="nav-group" key={group.id}><button className="nav-group-trigger" aria-expanded={open} onClick={() => setOpenGroups((current) => ({ ...current, [group.id]: !open }))}><span>{group.label}</span><b aria-hidden="true">{open ? "−" : "+"}</b></button>{open && <div>{group.items.map((item) => <button key={item.key} onClick={() => navigate(item.key)} className={screen === item.key ? "nav-item active" : "nav-item"}><span className="nav-icon"><HorizonIcon name={item.icon}/></span><span>{item.label}</span></button>)}</div>}</section>; })}
       </nav>
-      {operatorAccess && <a className="platform-admin-link" href="/admin"><span className="nav-dot" aria-hidden="true"/><span><strong>Platform administration</strong><small>Customers, billing and controls</small></span><b>↗</b></a>}
+      {operatorAccess && <a className="platform-admin-link" href="/admin"><span className="nav-icon"><HorizonIcon name="admin"/></span><span><strong>Platform administration</strong><small>Customers, billing and controls</small></span><b>↗</b></a>}
       <div className="sidebar-foot">
         <div className="usage-bar"><span style={{ width: `${Math.min(100, ((entitlement?.quotesUsedThisMonth ?? 0) / (entitlement?.monthlyQuoteLimit ?? 50)) * 100)}%` }} /></div>
         <p><strong>{entitlement?.quotesUsedThisMonth ?? 0}</strong> of {entitlement?.monthlyQuoteLimit ?? 50} quotes this month</p>
@@ -160,21 +199,21 @@ function Sidebar({ screen, setScreen, currentUser, entitlement, mobileOpen, onCl
   );
 }
 
-function Topbar({ workspace, workspaces, onOpenNavigation }: { workspace:Workspace|null; workspaces:Workspace[]; onOpenNavigation:()=>void }) {
+function Topbar({ screen, workspace, workspaces, onOpenNavigation }: { screen:Screen; workspace:Workspace|null; workspaces:Workspace[]; onOpenNavigation:()=>void }) {
   async function selectWorkspace(id:string){await fetch("/api/workspaces",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"select",tenantId:id})});window.location.reload();}
   return (
     <header className="topbar">
-      <div className="topbar-start"><button className="mobile-menu" onClick={onOpenNavigation} aria-label="Open navigation"><span/><span/><span/></button><label className="workspace-switcher"><span className="workspace-dot">{workspace?.name?.charAt(0).toUpperCase()??"Q"}</span><select aria-label="Current workspace" value={workspace?.id??""} onChange={event=>void selectWorkspace(event.target.value)}>{workspaces.length?workspaces.map(item=><option value={item.id} key={item.id}>{item.name}</option>):<option value="">QuoteBench workspace</option>}</select></label></div>
+      <div className="topbar-start"><button className="mobile-menu" onClick={onOpenNavigation} aria-label="Open navigation"><span/><span/><span/></button><div className="topbar-context"><span>Workspace</span><strong>{screenTitles[screen]}</strong></div><label className="workspace-switcher"><span className="workspace-dot">{workspace?.name?.charAt(0).toUpperCase()??"Q"}</span><select aria-label="Current workspace" value={workspace?.id??""} onChange={event=>void selectWorkspace(event.target.value)}>{workspaces.length?workspaces.map(item=><option value={item.id} key={item.id}>{item.name}</option>):<option value="">QuoteBench workspace</option>}</select></label></div>
       <div className="top-actions">
-        <button className="top-icon" aria-label="Search">⌕</button>
-        <button className="top-icon notification" aria-label="Notifications">○</button>
+        <button className="top-icon" aria-label="Search"><HorizonIcon name="search"/></button>
+        <button className="top-icon notification" aria-label="Notifications"><HorizonIcon name="notification"/></button>
         <button className="help-link">Help</button>
       </div>
     </header>
   );
 }
 
-function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalogueCategories, proposalTypes, ruleSet, onSaved, onRevised }: { reference: string; initialQuote: EditableQuote | null; clients: ClientRecord[]; catalogueItems: CatalogueItem[]; catalogueCategories:ServiceCategory[]; proposalTypes:ProposalType[]; ruleSet: RuleSet; onSaved: () => void; onRevised: (quote: EditableQuote) => void }) {
+function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalogueCategories, proposalTypes, ruleSet, onSaved, onRevised, initialStep = "client" }: { reference: string; initialQuote: EditableQuote | null; clients: ClientRecord[]; catalogueItems: CatalogueItem[]; catalogueCategories:ServiceCategory[]; proposalTypes:ProposalType[]; ruleSet: RuleSet; onSaved: () => void; onRevised: (quote: EditableQuote) => void; initialStep?: BuilderStep }) {
   const [clientId, setClientId] = useState(initialQuote?.clientId ?? "");
   const [clientName, setClientName] = useState(initialQuote?.clientName ?? "Stellar Grid Ltd");
   const [contactName, setContactName] = useState(initialQuote?.contactName ?? "Maya Patel");
@@ -200,7 +239,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
   });
   const [quoteDiscount, setQuoteDiscount] = useState(initialQuote?.answers.quoteDiscount ?? 0);
   const [pickerOpen, setPickerOpen] = useState(true);
-  const [builderStep, setBuilderStep] = useState<"commercial" | "proposal" | "review">("commercial");
+  const [builderStep, setBuilderStep] = useState<BuilderStep>(initialStep);
   const [openServiceCategories, setOpenServiceCategories] = useState<Record<string, boolean>>({});
   const [openServiceSubgroups, setOpenServiceSubgroups] = useState<Record<string, boolean>>({});
   const [explainLine, setExplainLine] = useState<string | null>(null);
@@ -221,6 +260,16 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
   const [hasSaved, setHasSaved] = useState(Boolean(initialQuote));
   const [autosaveState, setAutosaveState] = useState<"idle" | "saving" | "saved" | "failed">("idle");
   const locked = !["Draft", "Ready"].includes(lifecycleStatus);
+  const proposalMetadata = useMemo<ProposalMetadata>(() => ({
+    clientName,
+    contactName,
+    contactEmail,
+    quoteReference: reference,
+    proposalTitle,
+    validUntil: validUntil ? new Date(`${validUntil}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "",
+    currency: quoteCurrency,
+    brandName,
+  }), [brandName, clientName, contactEmail, contactName, proposalTitle, quoteCurrency, reference, validUntil]);
 
   useEffect(() => {
     if (preview) window.scrollTo({ top: 0, behavior: "auto" });
@@ -342,14 +391,22 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
   const requiredProposalBlocks = ["pricing_table", "terms", "signature"] as const;
   const requiredQuestionsComplete = (ruleSet.questions ?? []).filter((question) => question.required).every((question) => Boolean(answers[question.id]));
   const reviewReadiness = [
-    { id:"recipient", label:"Recipient and validity", detail:"Named client, contact, email and a current validity date", complete:Boolean(clientName.trim() && contactName.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail.trim()) && validUntil >= CURRENT_DAY), step:"commercial" as const },
-    { id:"pricing", label:"Commercial calculation", detail:"At least one priced service with no engine errors", complete:Boolean(priced && lines.length > 0 && pricingErrors.length === 0 && requiredQuestionsComplete), step:"commercial" as const },
+    { id:"recipient", label:"Recipient and validity", detail:"Named client, contact, email and a current validity date", complete:Boolean(clientName.trim() && contactName.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail.trim()) && validUntil >= CURRENT_DAY), step:"client" as const },
+    { id:"pricing", label:"Commercial calculation", detail:"At least one priced service with no engine errors", complete:Boolean(priced && lines.length > 0 && pricingErrors.length === 0 && requiredQuestionsComplete), step:"services" as const },
     { id:"proposal", label:"Proposal content", detail:"A titled page set containing pricing, terms and acceptance controls", complete:Boolean(proposalTitle.trim() && proposalPages.length > 0 && requiredProposalBlocks.every((type) => enabledProposalBlocks.some((block) => block.type === type))), step:"proposal" as const },
     { id:"identity", label:"Brand and document identity", detail:"A client-facing brand and traceable quote-specific page set", complete:Boolean(brandName.trim() && brandInitials.trim() && proposalPages.length), step:"proposal" as const },
+    { id:"governance", label:"Terms and acceptance", detail:"Terms, pricing and signature controls are present in the governed page set", complete:Boolean(requiredProposalBlocks.every((type) => enabledProposalBlocks.some((block) => block.type === type))), step:"governance" as const },
   ];
   const completedReadiness = reviewReadiness.filter((item) => item.complete).length;
   const readyToSubmit = reviewReadiness.every((item) => item.complete);
   const pdfBusy = pdfState === "Queueing PDF…" || pdfState === "Generating PDF…";
+  const workflowSteps: WorkflowStep<BuilderStep>[] = [
+    { id:"client", label:"Client", description:"Recipient and validity", complete:reviewReadiness[0].complete },
+    { id:"services", label:"Scope", description:"Services and pricing", complete:reviewReadiness[1].complete },
+    { id:"proposal", label:"Proposal", description:"Template and pages", complete:reviewReadiness[2].complete && reviewReadiness[3].complete },
+    { id:"governance", label:"Governance", description:"Terms and acceptance", complete:reviewReadiness[4].complete },
+    { id:"review", label:"Review", description:"Validate and issue", complete:lifecycleStatus !== "Draft" },
+  ];
 
   async function saveQuote(status: "Draft" | "Ready") {
     setSaving(status);
@@ -505,7 +562,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
   }
 
   if (preview && priced) {
-    return <QuotePreview quote={priced} clientName={clientName} reference={reference} title={proposalTitle} introduction={proposalIntroduction} scopeHeading={scopeHeading} brandName={brandName} brandInitials={brandInitials} validUntil={validUntil} pages={proposalPages} options={proposalOptions} onBack={() => setPreview(false)} />;
+    return <QuotePreview quote={priced} clientName={clientName} contactName={contactName} contactEmail={contactEmail} reference={reference} title={proposalTitle} introduction={proposalIntroduction} scopeHeading={scopeHeading} brandName={brandName} brandInitials={brandInitials} validUntil={validUntil} pages={proposalPages} options={proposalOptions} onBack={() => setPreview(false)} />;
   }
 
   return (
@@ -517,7 +574,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
         </div>
         <div className="heading-actions">
           <button className="button secondary" onClick={() => saveQuote("Draft")} disabled={saving !== null || !["Draft", "Ready"].includes(lifecycleStatus)}>{saving === "Draft" ? "Saving…" : "Save draft"}</button>
-          <button className="button primary" onClick={() => setBuilderStep("review")}>Review and issue</button>
+          <button className="button primary" onClick={() => setBuilderStep("governance")}>Review and issue</button>
           {hasSaved && <button className="button secondary" onClick={duplicateCurrentQuote} disabled={duplicating}>{duplicating ? "Duplicating…" : "Duplicate as draft"}</button>}
           {locked && lifecycleStatus !== "Accepted" && <button className="button primary" onClick={createRevision} disabled={revising}>{revising ? "Creating…" : "Create revision"}</button>}
         </div>
@@ -527,15 +584,12 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
       {locked && <div className="locked-panel"><strong>Commercial snapshot locked</strong><span>{lifecycleStatus === "Accepted" ? "This accepted version and its evidence are permanently immutable." : "This issued version is immutable. Create a revision to change scope, pricing or proposal content."}</span>{initialQuote?.revisionOf && <small>Revision of {initialQuote.revisionOf}</small>}</div>}
       {sharePath && <div className="share-panel"><div><strong>Recipient link</strong><p>This tokenised link provides the governed client document and formal acceptance control.</p></div><code>{sharePath}</code><a className="button secondary" href={sharePath} target="_blank" rel="noreferrer">Open quote</a></div>}
 
-      <nav className="quote-workflow" aria-label="Quote workflow">
-        <button className={builderStep === "commercial" ? "active" : "complete"} aria-current={builderStep === "commercial" ? "step" : undefined} onClick={() => setBuilderStep("commercial")}><span>1</span><span><strong>Configure quote</strong><small>Client, services and pricing</small></span></button>
-        <button className={builderStep === "proposal" ? "active" : proposalPages.length ? "complete" : ""} aria-current={builderStep === "proposal" ? "step" : undefined} onClick={() => setBuilderStep("proposal")}><span>2</span><span><strong>Proposal design</strong><small>Template, pages and content</small></span></button>
-        <button className={builderStep === "review" ? "active" : lifecycleStatus !== "Draft" ? "complete" : ""} aria-current={builderStep === "review" ? "step" : undefined} onClick={() => setBuilderStep("review")}><span>3</span><span><strong>Review and issue</strong><small>Validate, approve and publish</small></span></button>
-      </nav>
+      <WorkflowSteps steps={workflowSteps} current={builderStep} onChange={setBuilderStep}/>
 
-      {builderStep === "commercial" ? (
+      {builderStep === "client" || builderStep === "services" ? (
       <div className="builder-grid">
         <div className="builder-workspace">
+          {builderStep === "client" && <>
           <section className="section-block client-block">
             <div className="section-number">01</div>
             <div className="section-content">
@@ -556,6 +610,13 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
             </div>
           </section>
 
+          <footer className="commercial-step-footer">
+            <div><strong>Recipient details complete</strong><p>Continue to configure the service scope and pricing context.</p></div>
+            <button className="button primary" onClick={() => setBuilderStep("services")}>Continue to services →</button>
+          </footer>
+          </>}
+
+          {builderStep === "services" && <>
           <section className="section-block">
             <div className="section-number">02</div>
             <div className="section-content">
@@ -642,9 +703,11 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
           </section>
 
           <footer className="commercial-step-footer">
-            <div><strong>Commercial setup complete</strong><p>Continue to apply the standard proposal template and tailor the client document.</p></div>
-            <button className="button primary" onClick={() => setBuilderStep("proposal")}>Continue to proposal design →</button>
+            <button className="button secondary" onClick={() => setBuilderStep("client")}>← Back to client</button>
+            <div><strong>Commercial scope complete</strong><p>Continue to apply the standard proposal template and tailor the client document.</p></div>
+            <button className="button primary" onClick={() => setBuilderStep("proposal")}>Continue to proposal →</button>
           </footer>
+          </>}
         </div>
 
         <QuoteSummary
@@ -654,44 +717,79 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
           errors={pricingErrors}
           discount={quoteDiscount}
           setDiscount={setQuoteDiscount}
-          onPreview={() => setBuilderStep("review")}
+          onPreview={() => setBuilderStep("governance")}
         />
       </div>
       ) : builderStep === "proposal" ? (
         <section className="proposal-design-page">
           <header className="proposal-design-header">
             <div><p className="eyebrow">Proposal design workspace</p><h2>Shape the client document</h2><p>The selected standard template is copied into this quote. Changes here do not alter the reusable master template or governed pricing.</p></div>
-            <div><span className="proposal-page-count"><strong>{proposalPages.length}</strong><small>Pages</small></span><button className="button secondary" onClick={() => setBuilderStep("commercial")}>← Commercial setup</button><button className="button primary" disabled={!priced} onClick={() => priced && setPreview(true)}>Preview proposal</button></div>
+            <div><span className="proposal-page-count"><strong>{proposalPages.length}</strong><small>{proposalPages.length === 1 ? "Page" : "Pages"}</small></span><button className="button secondary" onClick={() => setBuilderStep("services")}>← Scope and pricing</button><button className="button primary" disabled={!priced} onClick={() => priced && setPreview(true)}>Preview proposal</button></div>
           </header>
 
-          <section className="proposal-template-card">
-            <div className="template-card-copy"><span className="template-card-icon" aria-hidden="true">T</span><div><strong>Standard template for this quote</strong><p>Applying a template creates an editable quote-specific copy. Add, remove and reorder pages without changing the master.</p></div></div>
-            <label><span>Selected template</span><select value={selectedTemplateId} disabled={locked} onChange={(event) => selectProposalTemplate(event.target.value)}><option value="">Custom proposal</option>{proposalTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}{template.isDefault ? " · Default" : ""}</option>)}</select></label>
+          <section className="proposal-setup-bar">
+            <div><span className="template-card-icon" aria-hidden="true">T</span><div><strong>Start from a standard template</strong><p>Applying a template creates an independent, editable copy for this quote.</p></div></div>
+            <label><span>Template</span><select value={selectedTemplateId} disabled={locked} onChange={(event) => selectProposalTemplate(event.target.value)}><option value="">Custom proposal</option>{proposalTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}{template.isDefault ? " · Default" : ""}</option>)}</select></label>
           </section>
 
-          <section className="proposal-settings-card">
-            <div className="proposal-settings-heading"><div><strong>Proposal details</strong><p>These values are specific to the current quote.</p></div><span>{selectedTemplateId ? "Template linked" : "Custom pages"}</span></div>
+          <details className="proposal-disclosure">
+            <summary><span><strong>Quote-specific details</strong><small>Title, brand, deposit and acceptance options</small></span><span>{selectedTemplateId ? "Template linked" : "Custom pages"}</span></summary>
             <div className="document-fields proposal-design-fields">
               <label><span>Proposal title</span><input value={proposalTitle} disabled={locked} onChange={(event) => setProposalTitle(event.target.value)} /></label>
               <div className="brand-fields"><label><span>Brand name</span><input value={brandName} disabled={locked} onChange={(event) => setBrandName(event.target.value)} /></label><label><span>Initials</span><input maxLength={4} value={brandInitials} disabled={locked} onChange={(event) => setBrandInitials(event.target.value.toUpperCase())} /></label></div>
               <label><span>Deposit stated, £, optional</span><input type="number" min="0" step="0.01" value={deposit} disabled={locked} onChange={(event) => setDeposit(event.target.value)} /></label>
               <div className="proposal-options-editor"><span>Acceptance options, optional</span>{proposalOptions.map((option, index) => <div key={option.id}><input value={option.label} disabled={locked} placeholder={`Option ${index + 1}`} onChange={(event) => setProposalOptions((current) => current.map((entry) => entry.id === option.id ? { ...entry, label: event.target.value } : entry))} /><button className="text-button danger-text" disabled={locked} onClick={() => setProposalOptions((current) => current.filter((entry) => entry.id !== option.id))}>Remove</button></div>)}<button className="text-button" disabled={locked} onClick={() => setProposalOptions((current) => [...current, { id: crypto.randomUUID(), label: "" }])}>+ Add option</button></div>
             </div>
-          </section>
+          </details>
 
           <section className="proposal-design-editor document-content-block">
-            <div className="proposal-editor-heading"><div><strong>Page builder</strong><p>Select a page, edit its blocks, or add content from the library.</p></div><span>Quote-specific copy</span></div>
-            <div className="section-content"><ProposalEditor value={proposalPages} onChange={setProposalPages} onUploadImage={uploadProposalImage} readOnly={locked}/></div>
+            <div className="proposal-editor-heading"><div><strong>Visual proposal builder</strong><p>Select a page, then drag and edit content directly in the canvas.</p></div><span>Quote-specific copy</span></div>
+            <div className="section-content"><Suspense fallback={<div className="proposal-editor-loading"><span/><strong>Loading visual editor</strong><p>Preparing the governed page and block library.</p></div>}><ProposalEditor value={proposalPages} onChange={setProposalPages} onUploadImage={uploadProposalImage} pricingPreview={priced} proposalOptions={proposalOptions} metadataPreview={proposalMetadata} readOnly={locked}/></Suspense></div>
           </section>
 
-          <section className="proposal-support-card">
-            <div><strong>Supporting files and output</strong><p>Save the draft before attaching files or generating a governed PDF.</p></div>
-            <div className="proposal-support-actions"><label aria-disabled={!hasSaved} className={`button secondary upload-button ${hasSaved ? "" : "disabled-upload"}`}>Attach file<input type="file" disabled={!hasSaved} accept=".pdf,.png,.jpg,.jpeg,.txt" onChange={(event) => void uploadAttachment(event.target.files?.[0])} /></label><button className="button secondary" disabled={!hasSaved} onClick={requestPdf}>Generate PDF</button></div>
-          </section>
+          <details className="proposal-disclosure proposal-output-disclosure">
+            <summary><span><strong>Files and output</strong><small>Attachments and governed PDF</small></span><span>{quoteFiles.length ? `${quoteFiles.length} files` : "Optional"}</span></summary>
+            <div className="proposal-support-card"><div><p>Save the draft before attaching files or generating a governed PDF.</p></div><div className="proposal-support-actions"><label aria-disabled={!hasSaved} className={`button secondary upload-button ${hasSaved ? "" : "disabled-upload"}`}>Attach file<input type="file" disabled={!hasSaved} accept=".pdf,.png,.jpg,.jpeg,.txt" onChange={(event) => void uploadAttachment(event.target.files?.[0])} /></label><button className="button secondary" disabled={!hasSaved} onClick={requestPdf}>Generate PDF</button></div></div>
+          </details>
           {quoteFiles.length > 0 && <div className="quote-files">{quoteFiles.map((file) => <a key={file.id} href={`/api/files/${file.id}`} target="_blank" rel="noreferrer"><span>{file.kind === "pdf" ? "PDF" : "FILE"}</span><strong>{file.filename}</strong><small>{Math.ceil(file.sizeBytes / 1024)} KB</small></a>)}</div>}
           {pdfState && (pdfState.startsWith("PDF ready|") ? <a className="pdf-ready-link" href={pdfState.split("|")[1]} target="_blank" rel="noreferrer">PDF ready, download now</a> : <p className="pdf-state">{pdfState}</p>)}
 
-          <footer className="proposal-design-footer"><button className="button secondary" onClick={() => setBuilderStep("commercial")}>← Back to commercial setup</button><span>Step 2 of 3 · {proposalPages.length} pages</span><div><button className="button secondary" onClick={() => saveQuote("Draft")} disabled={saving !== null || locked}>{saving === "Draft" ? "Saving…" : "Save draft"}</button><button className="button primary" onClick={() => setBuilderStep("review")}>Review proposal →</button></div></footer>
+          <footer className="proposal-design-footer"><button className="button secondary" onClick={() => setBuilderStep("services")}>← Back to scope and pricing</button><span>Step 3 of 5 · {proposalPages.length} {proposalPages.length === 1 ? "page" : "pages"}</span><div><button className="button secondary" onClick={() => saveQuote("Draft")} disabled={saving !== null || locked}>{saving === "Draft" ? "Saving…" : "Save draft"}</button><button className="button primary" onClick={() => setBuilderStep("governance")}>Continue to governance →</button></div></footer>
+        </section>
+      ) : builderStep === "governance" ? (
+        <section className="governance-stage-page">
+          <header className="governance-stage-header">
+            <div><p className="eyebrow">Engagement governance</p><h2>Confirm the contractual package</h2><p>Review the commercial terms, schedules and acceptance controls attached to this quote before final validation.</p></div>
+            <span className={`control-status ${reviewReadiness[4].complete ? "ready" : "attention"}`}>{reviewReadiness[4].complete ? "Controls complete" : "Action required"}</span>
+          </header>
+
+          <div className="governance-stage-grid">
+            <section className="governance-stage-card">
+              <header><div><p className="eyebrow">Document controls</p><h3>Proposal content policy</h3></div><span>{enabledProposalBlocks.length} active blocks</span></header>
+              <div className="governance-check-list">
+                <GovernanceCheck title="Commercial pricing" description="A governed pricing table communicates the accepted scope and investment." status={enabledProposalBlocks.some((block) => block.type === "pricing_table") ? "Ready" : "Review"}/>
+                <GovernanceCheck title="Terms and jurisdiction" description="The quote contains a terms block. Published mandatory clauses are revalidated by the server at readiness." status={enabledProposalBlocks.some((block) => block.type === "terms") ? "Ready" : "Review"}/>
+                <GovernanceCheck title="Acceptance and signature" description="The recipient document includes a formal acceptance control and immutable evidence path." status={enabledProposalBlocks.some((block) => block.type === "signature") ? "Ready" : "Review"}/>
+              </div>
+            </section>
+
+            <aside className="governance-stage-aside">
+              <section className="governance-stage-card">
+                <header><div><p className="eyebrow">Engagement package</p><h3>Quote-level summary</h3></div></header>
+                <dl className="governance-summary-list">
+                  <div><dt>Proposal type</dt><dd>{proposalTypes.find((type) => type.id === proposalTypeId)?.name ?? "Custom"}</dd></div>
+                  <div><dt>Service schedules</dt><dd>{eligibleCatalogue.filter((item) => lines.some((line) => line.itemId === item.id) && item.serviceSchedule).length} included</dd></div>
+                  <div><dt>Acceptance options</dt><dd>{proposalOptions.filter((option) => option.label.trim()).length || "Standard"}</dd></div>
+                  <div><dt>Valid until</dt><dd>{validUntil}</dd></div>
+                  <div><dt>Jurisdiction policy</dt><dd>Validated on readiness</dd></div>
+                </dl>
+                <button className="button secondary full-action" onClick={() => setBuilderStep("proposal")}>Edit proposal content</button>
+              </section>
+              <section className="governance-policy-note"><span>§</span><div><strong>Server-enforced governance</strong><p>Published legal content is immutable. Applicable mandatory policies, expiry and commercial calculations are checked again when this quote is marked ready.</p></div></section>
+            </aside>
+          </div>
+
+          <footer className="governance-stage-footer"><button className="button secondary" onClick={() => setBuilderStep("proposal")}>← Back to proposal</button><span>Step 4 of 5 · Governance controls</span><button className="button primary" onClick={() => setBuilderStep("review")}>Continue to final review →</button></footer>
         </section>
       ) : (
         <section className="review-issue-page">
@@ -704,7 +802,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
             <section className="review-preview-card">
               <header><div><span className="review-live-dot"/><strong>Client document preview</strong><small>Responsive web proposal</small></div><span>{proposalPages.length} pages · {quoteCurrency}</span></header>
               <div className="review-document-frame">
-                {priced ? <ProposalDocument quote={priced} clientName={clientName} reference={reference} title={proposalTitle} introduction={proposalIntroduction} scopeHeading={scopeHeading} brandName={brandName} brandInitials={brandInitials} validUntil={validUntil} pages={proposalPages} options={proposalOptions} compact /> : <div className="review-preview-empty"><span>!</span><strong>Commercial preview unavailable</strong><p>Return to commercial setup and resolve the pricing-engine exceptions.</p><button className="button secondary" onClick={() => setBuilderStep("commercial")}>Open commercial setup</button></div>}
+                {priced ? <ProposalDocument quote={priced} clientName={clientName} contactName={contactName} contactEmail={contactEmail} reference={reference} title={proposalTitle} introduction={proposalIntroduction} scopeHeading={scopeHeading} brandName={brandName} brandInitials={brandInitials} validUntil={validUntil} pages={proposalPages} options={proposalOptions} compact /> : <div className="review-preview-empty"><span>!</span><strong>Commercial preview unavailable</strong><p>Return to scope and pricing and resolve the pricing-engine exceptions.</p><button className="button secondary" onClick={() => setBuilderStep("services")}>Open scope and pricing</button></div>}
               </div>
             </section>
 
@@ -739,7 +837,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
             </aside>
           </div>
 
-          <footer className="review-issue-footer"><button className="button secondary" onClick={() => setBuilderStep("proposal")}>← Back to proposal design</button><span>Step 3 of 3 · {lifecycleStatus}</span><button className="button secondary" onClick={() => setBuilderStep("commercial")}>Review commercial setup</button></footer>
+          <footer className="review-issue-footer"><button className="button secondary" onClick={() => setBuilderStep("governance")}>← Back to governance</button><span>Step 5 of 5 · {lifecycleStatus}</span><button className="button secondary" onClick={() => setBuilderStep("services")}>Review scope and pricing</button></footer>
         </section>
       )}
     </div>
@@ -752,7 +850,7 @@ function QuoteSummary({ quote, reference, ruleSetVersion, errors, discount, setD
     : [];
   return (
     <aside className="quote-summary">
-      <div className="summary-kicker"><span>Live calculation</span><b>Engine verified</b></div>
+      <div className="summary-kicker"><span>Quote totals</span><b>Published rule set</b></div>
       <div className="quote-summary-body">
         <div className="quote-summary-heading">
           <h2>Quote summary</h2>
@@ -791,17 +889,18 @@ function QuoteSummary({ quote, reference, ruleSetVersion, errors, discount, setD
   );
 }
 
-function PreviewBlock({block,quote,recurring,options}:{block:DocumentPage["blocks"][number];quote:PricedQuote;recurring:Array<[Frequency,number]>;options:Array<{id:string;label:string}>}){if(block.enabled===false)return null;const heading=<>{block.eyebrow&&<p className="eyebrow">{block.eyebrow}</p>}{block.title&&<h2>{block.title}</h2>}</>;if(block.type==="spacer")return <div className="recipient-spacer"/>;if(block.type==="pricing_table")return <div className="recipient-content-block">{heading}{block.display!=="totals"&&<section className="document-scope service-schedule-scope">{quote.lines.map(line=><div className="proposal-service-line" key={line.lineId}><div><span><strong>{line.itemName}</strong><small>{line.quantity} {line.unitLabel}</small></span><strong>{formatMoney(line.finalPriceMinor,quote.currency)}</strong></div>{(line.description||line.serviceSchedule||line.serviceTerms)&&<section>{line.description&&<p>{line.description}</p>}{line.serviceSchedule&&<div><strong>Service schedule</strong><p>{line.serviceSchedule}</p></div>}{line.serviceTerms&&<div><strong>Service terms</strong><p>{line.serviceTerms}</p></div>}</section>}</div>)}</section>}{block.display!=="lines"&&<section className="document-totals"><div><small>ONE-OFF INVESTMENT</small><strong>{formatMoney(quote.oneOffSubtotalMinor,quote.currency)}</strong></div>{recurring.map(([frequency,amount])=><div key={frequency}><small>{labels[frequency].toUpperCase()} RECURRING</small><strong>{formatMoney(amount)}</strong></div>)}</section>}</div>;if(["feature_grid","timeline","team","faq"].includes(block.type))return <div className="recipient-content-block">{heading}<div className="recipient-items" style={{"--columns":String(block.columns??3)} as CSSProperties}>{(block.items??[]).map(item=><div key={item.id}><strong>{item.title}</strong><p>{item.content}</p></div>)}</div></div>;if(block.type==="image")return <div className="recipient-content-block">{heading}{block.fileId&&<img className="recipient-media" src={`/api/files/${block.fileId}`} alt={block.title??"Proposal image"}/>}</div>;if(block.type==="options")return <div className="recipient-content-block">{heading}<div className="recipient-items">{options.map(option=><div key={option.id}><strong>{option.label}</strong></div>)}</div></div>;return <div className={`recipient-content-block ${block.type==="callout"?"recipient-callout":""}`}>{heading}{block.content&&<p>{block.content}</p>}</div>}
+function PreviewBlock({block,quote,recurring,options,metadata}:{block:DocumentPage["blocks"][number];quote:PricedQuote;recurring:Array<[Frequency,number]>;options:Array<{id:string;label:string}>;metadata:ProposalMetadata}){if(block.enabled===false)return null;const heading=<>{block.eyebrow&&<p className="eyebrow">{resolveProposalText(block.eyebrow,metadata)}</p>}{block.title&&<h2>{resolveProposalText(block.title,metadata)}</h2>}</>;if(block.type==="spacer")return <div className="recipient-spacer"/>;if(block.type==="pricing_table")return <div className="recipient-content-block">{heading}{block.display!=="totals"&&<section className="document-scope service-schedule-scope">{quote.lines.map(line=><div className="proposal-service-line" key={line.lineId}><div><span><strong>{line.itemName}</strong><small>{line.quantity} {line.unitLabel}</small></span><strong>{formatMoney(line.finalPriceMinor,quote.currency)}</strong></div>{(line.description||line.serviceSchedule||line.serviceTerms)&&<section>{line.description&&<p>{line.description}</p>}{line.serviceSchedule&&<div><strong>Service schedule</strong><p>{line.serviceSchedule}</p></div>}{line.serviceTerms&&<div><strong>Service terms</strong><p>{line.serviceTerms}</p></div>}</section>}</div>)}</section>}{block.display!=="lines"&&<section className="document-totals"><div><small>ONE-OFF INVESTMENT</small><strong>{formatMoney(quote.oneOffSubtotalMinor,quote.currency)}</strong></div>{recurring.map(([frequency,amount])=><div key={frequency}><small>{labels[frequency].toUpperCase()} RECURRING</small><strong>{formatMoney(amount)}</strong></div>)}</section>}</div>;if(["feature_grid","timeline","team","faq"].includes(block.type))return <div className="recipient-content-block">{heading}<div className="recipient-items" style={{"--columns":String(block.columns??3)} as CSSProperties}>{(block.items??[]).map(item=><div key={item.id}><strong>{resolveProposalText(item.title,metadata)}</strong><p>{resolveProposalText(item.content,metadata)}</p></div>)}</div></div>;if(block.type==="image")return <div className="recipient-content-block">{heading}{block.fileId&&<img className="recipient-media" src={`/api/files/${block.fileId}`} alt={resolveProposalText(block.title,metadata)??"Proposal image"}/>}</div>;if(block.type==="options")return <div className="recipient-content-block">{heading}<div className="recipient-items">{options.map(option=><div key={option.id}><strong>{option.label}</strong></div>)}</div></div>;return <div className={`recipient-content-block ${block.type==="callout"?"recipient-callout":""}`}>{heading}{block.content&&<p>{resolveProposalText(block.content,metadata)}</p>}</div>}
 
-type ProposalDocumentProps = { quote:PricedQuote; clientName:string; reference:string; title:string; introduction:string; scopeHeading:string; brandName:string; brandInitials:string; validUntil:string; pages:DocumentPage[]; options:Array<{id:string;label:string}>; compact?:boolean };
+type ProposalDocumentProps = { quote:PricedQuote; clientName:string; contactName:string; contactEmail:string; reference:string; title:string; introduction:string; scopeHeading:string; brandName:string; brandInitials:string; validUntil:string; pages:DocumentPage[]; options:Array<{id:string;label:string}>; compact?:boolean };
 
-function ProposalDocument({ quote, clientName, reference, title, introduction, scopeHeading, brandName, brandInitials, validUntil, pages, options, compact=false }:ProposalDocumentProps) {
+function ProposalDocument({ quote, clientName, contactName, contactEmail, reference, title, introduction, scopeHeading, brandName, brandInitials, validUntil, pages, options, compact=false }:ProposalDocumentProps) {
   const recurring = (Object.entries(quote.recurringByFrequency) as Array<[Frequency, number]>).filter(([frequency, amount]) => frequency !== "one_off" && amount > 0);
   const validity = validUntil ? new Date(`${validUntil}T12:00:00Z`).toLocaleDateString("en-GB", { day:"numeric", month:"long", year:"numeric" }) : "Not set";
+  const metadata:ProposalMetadata = { clientName, contactName, contactEmail, quoteReference:reference, proposalTitle:title, validUntil:validity, currency:quote.currency, brandName };
   return (
       <article className={`client-document horizon-client-document ${compact ? "compact-document" : ""}`}>
         <header><span className="client-logo">{brandInitials || "QB"}</span><div><small>PROPOSAL · {reference}</small><h1>{title}</h1><p>Prepared for {clientName}</p></div><div className="document-hero-meta"><span>Valid until</span><strong>{validity}</strong><span>Currency</span><strong>{quote.currency}</strong></div></header>
-        {pages.length?pages.map(page=><section className={`recipient-page page-${page.format} background-${page.background}`} key={page.id}>{page.blocks.map(block=><PreviewBlock key={block.id} block={block} quote={quote} recurring={recurring} options={options}/>)}</section>):<><section className="document-intro"><p className="eyebrow">Our proposal</p><h2>Clarity from scope to commitment.</h2><p>{introduction}</p></section><section className="document-scope"><p className="eyebrow">Scope and investment</p><h2>{scopeHeading}</h2>{quote.lines.map((line) => <div key={line.lineId}><span><strong>{line.itemName}</strong><small>{line.quantity} {line.unitLabel}{line.quantity === 1 ? "" : "s"}</small></span><strong>{formatMoney(line.finalPriceMinor,quote.currency)}</strong></div>)}</section><section className="document-totals"><div><small>ONE-OFF INVESTMENT</small><strong>{formatMoney(quote.oneOffSubtotalMinor,quote.currency)}</strong></div>{recurring.map(([frequency, amount]) => <div key={frequency}><small>{labels[frequency].toUpperCase()} RECURRING</small><strong>{formatMoney(amount)}</strong></div>)}</section></>}
+        {pages.length?pages.map(page=><section className={`recipient-page page-${page.format} background-${page.background}`} key={page.id}>{page.blocks.map(block=><PreviewBlock key={block.id} block={block} quote={quote} recurring={recurring} options={options} metadata={metadata}/>)}</section>):<><section className="document-intro"><p className="eyebrow">Our proposal</p><h2>Clarity from scope to commitment.</h2><p>{introduction}</p></section><section className="document-scope"><p className="eyebrow">Scope and investment</p><h2>{scopeHeading}</h2>{quote.lines.map((line) => <div key={line.lineId}><span><strong>{line.itemName}</strong><small>{line.quantity} {line.unitLabel}{line.quantity === 1 ? "" : "s"}</small></span><strong>{formatMoney(line.finalPriceMinor,quote.currency)}</strong></div>)}</section><section className="document-totals"><div><small>ONE-OFF INVESTMENT</small><strong>{formatMoney(quote.oneOffSubtotalMinor,quote.currency)}</strong></div>{recurring.map(([frequency, amount]) => <div key={frequency}><small>{labels[frequency].toUpperCase()} RECURRING</small><strong>{formatMoney(amount)}</strong></div>)}</section></>}
         <section className="document-accept"><div><p className="eyebrow">Formal acceptance</p><h2>Ready to proceed?</h2><p>The secure acceptance workflow records the selected option, authorised signatory and verification evidence.</p></div><button disabled>Accept proposal</button></section>
         <footer><span>{brandName}</span><span>Valid until {validity}</span><span>Private and confidential</span></footer>
       </article>
@@ -1009,8 +1108,8 @@ function ActivityScreen({ events }: { events: SavedEvent[] }) {
   );
 }
 
-export default function QuoteBench({ currentUser, operatorAccess = false }: { currentUser: ChatGPTUser | null; operatorAccess?: boolean }) {
-  const [screen, setScreen] = useState<Screen>("builder");
+export default function QuoteBench({ currentUser, operatorAccess = false, initialScreen = "builder", initialBuilderStep = "client" }: { currentUser: ChatGPTUser | null; operatorAccess?: boolean; initialScreen?: Screen; initialBuilderStep?: BuilderStep }) {
+  const [screen, setScreen] = useState<Screen>(initialScreen);
   const [activeReference, setActiveReference] = useState("QB-1049");
   const [activeQuote, setActiveQuote] = useState<EditableQuote | null>(null);
   const [savedQuotes, setSavedQuotes] = useState<SavedQuote[]>([]);
@@ -1028,6 +1127,13 @@ export default function QuoteBench({ currentUser, operatorAccess = false }: { cu
   const [storageMessage, setStorageMessage] = useState<string | null>(currentUser ? null : "Sign in with ChatGPT to load and save durable workspace quotes.");
   const [mobileNavigationOpen,setMobileNavigationOpen]=useState(false);
   const currentUserEmail = currentUser?.email;
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (screen === "builder") url.searchParams.delete("screen");
+    else url.searchParams.set("screen", screen);
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [screen]);
 
   function startNewQuote() {
     const references = [activeReference, ...seedQuotes.map((quote) => quote.reference), ...savedQuotes.map((quote) => quote.reference)];
@@ -1125,9 +1231,9 @@ export default function QuoteBench({ currentUser, operatorAccess = false }: { cu
       <Sidebar screen={screen} setScreen={setScreen} currentUser={currentUser} entitlement={entitlement} mobileOpen={mobileNavigationOpen} onClose={()=>setMobileNavigationOpen(false)} operatorAccess={operatorAccess} />
       {mobileNavigationOpen&&<button className="navigation-backdrop" aria-label="Close navigation" onClick={()=>setMobileNavigationOpen(false)}/>}
       <div className="main-shell">
-        <Topbar workspace={workspace} workspaces={workspaces.length?workspaces:workspace?[workspace]:[]} onOpenNavigation={()=>setMobileNavigationOpen(true)} />
+        <Topbar screen={screen} workspace={workspace} workspaces={workspaces.length?workspaces:workspace?[workspace]:[]} onOpenNavigation={()=>setMobileNavigationOpen(true)} />
         <main className="main-content">
-          {screen === "builder" && <QuoteBuilder key={activeReference} reference={activeReference} initialQuote={activeQuote} clients={clients} catalogueItems={workspaceCatalogue} catalogueCategories={catalogueCategories} proposalTypes={proposalTypes} ruleSet={activeRuleSet} onSaved={refreshQuotes} onRevised={openRevision} />}
+          {screen === "builder" && <QuoteBuilder key={activeReference} reference={activeReference} initialQuote={activeQuote} clients={clients} catalogueItems={workspaceCatalogue} catalogueCategories={catalogueCategories} proposalTypes={proposalTypes} ruleSet={activeRuleSet} onSaved={refreshQuotes} onRevised={openRevision} initialStep={initialBuilderStep} />}
           {screen === "quotes" && <QuotesScreen onCreate={startNewQuote} onOpen={openQuote} savedQuotes={savedQuotes} loading={quotesLoading} storageMessage={storageMessage} />}
           {screen === "clients" && <ClientsScreen clients={clients} onSaved={(client) => setClients((current) => [...current.filter((entry) => entry.id !== client.id), client].sort((a, b) => a.name.localeCompare(b.name)))} />}
           {screen === "catalogue" && <CatalogueScreen catalogueItems={workspaceCatalogue} categories={catalogueCategories} proposalTypes={proposalTypes} onRefresh={refreshQuotes} />}
@@ -1138,7 +1244,7 @@ export default function QuoteBench({ currentUser, operatorAccess = false }: { cu
           {screen === "usage" && <UsageScreen />}
           {screen === "documents" && <DocumentsScreen />}
           {screen === "delivery" && <DeliveryScreen quotes={savedQuotes} onSent={refreshQuotes} />}
-          {screen === "templates" && <TemplatesScreen onProvisioned={refreshQuotes} startQuote={startNewQuote} />}
+          {screen === "templates" && <WorkspaceErrorBoundary title="The template editor stopped responding" description="Your saved templates remain unchanged. Retry the editor or reload this workspace without returning to the home screen." recoveryPath="/?screen=templates"><Suspense fallback={<div className="proposal-editor-loading"><span/><strong>Loading template workspace</strong><p>Preparing standard templates and the visual editor.</p></div>}><TemplatesScreen onProvisioned={refreshQuotes} startQuote={startNewQuote} /></Suspense></WorkspaceErrorBoundary>}
           {screen === "engagement" && <EngagementScreen proposalTypes={proposalTypes} />}
           {screen === "ai" && <AiAssistanceScreen />}
           {screen === "billing" && <BillingScreen />}

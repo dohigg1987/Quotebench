@@ -2,13 +2,25 @@
 
 ## Horizon UI
 
-QuoteBench's application-shell and component design conventions are adapted from the open-source Horizon UI React and Next.js boilerplate.
-
-Source: https://github.com/horizon-ui/shadcn-nextjs-boilerplate
+QuoteBench adapts visual-system conventions and selected interface patterns from the open-source Horizon UI Tailwind React Next.js template.
 
 MIT License
 
-Copyright (c) 2024 Horizon UI
+Copyright (c) 2023 Horizon UI
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+## Puck
+
+QuoteBench uses the Puck visual editor for controlled drag-and-drop proposal composition.
+
+MIT License
+
+Copyright (c) The Puck Contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 

@@ -1,27 +1,111 @@
 "use client";
 
-import type { BlockType, DocumentBlock, DocumentPage } from "../db/document-store";
 import { useState } from "react";
+import type { PricedQuote } from "../packages/pricing-engine/src/index";
+import type { DocumentBlock, DocumentPage } from "../db/document-store";
+import { proposalMetadataFields, type ProposalMetadata } from "../lib/proposal-metadata";
+import EditorErrorBoundary from "./editor-error-boundary";
+import { ProposalPuck, commonBlock } from "./proposal-puck";
 
-const palette:Array<{type:BlockType;label:string;description:string}>=[
-  {type:"heading",label:"Heading",description:"Section title and introduction"},{type:"text",label:"Rich text",description:"Long-form narrative content"},{type:"callout",label:"Callout",description:"Highlight a result or key message"},{type:"pricing_table",label:"Pricing",description:"Governed live commercial values"},{type:"options",label:"Options",description:"Alternative packages or choices"},{type:"image",label:"Image",description:"Full-width or split visual"},{type:"video",label:"Video",description:"Linked video presentation"},{type:"testimonial",label:"Testimonial",description:"Client proof and attribution"},{type:"feature_grid",label:"Feature grid",description:"Benefits, deliverables or outcomes"},{type:"timeline",label:"Timeline",description:"Phases and milestones"},{type:"team",label:"Team",description:"People and role profiles"},{type:"faq",label:"FAQ",description:"Questions and answers"},{type:"terms",label:"Terms",description:"Commercial and legal terms"},{type:"signature",label:"Acceptance",description:"Formal decision control"},{type:"spacer",label:"Spacer",description:"Visual breathing room"},
-];
+type ProposalEditorProps = {
+  value: DocumentPage[];
+  onChange: (pages: DocumentPage[]) => void;
+  onUploadImage?: (file: File) => Promise<string | null>;
+  pricingPreview?: PricedQuote | null;
+  proposalOptions?: Array<{ id: string; label: string }>;
+  metadataPreview?: ProposalMetadata;
+  context?: "quote" | "template";
+  readOnly?: boolean;
+};
 
-function newBlock(type:BlockType):DocumentBlock { const item=(title:string,content:string)=>({id:crypto.randomUUID(),title,content}); const common={id:crypto.randomUUID(),type,enabled:true,layout:"full" as const,alignment:"left" as const}; if(type==="pricing_table")return{...common,title:"Investment",display:"full",locked:true};if(type==="feature_grid")return{...common,title:"What is included",layout:"cards",columns:3,items:[item("Outcome one","Describe the value delivered."),item("Outcome two","Describe the value delivered."),item("Outcome three","Describe the value delivered.")]};if(type==="timeline")return{...common,title:"Delivery plan",items:[item("Mobilise","Agree objectives, governance and ways of working."),item("Deliver","Complete the agreed work and share progress."),item("Embed","Transfer knowledge and confirm outcomes.")]};if(type==="faq")return{...common,title:"Frequently asked questions",items:[item("What happens next?","Explain mobilisation and next steps.")]};if(type==="team")return{...common,title:"Your team",items:[item("Lead","Role, experience and responsibilities.")]};if(type==="testimonial")return{...common,title:"Client perspective",content:"Add a relevant client quotation and attribution."};if(type==="terms")return{...common,title:"Terms",content:"Add payment, validity, delivery and other commercial terms.",locked:true};if(type==="signature")return{...common,title:"Acceptance",content:"The recipient can formally accept or decline this proposal.",locked:true};if(type==="spacer")return common;return{...common,title:type==="heading"?"A clear section heading":type==="callout"?"Key outcome":type==="options"?"Proposal options":type==="video"?"Video introduction":type==="image"?"Visual":"Narrative",content:"Add content for this block."}; }
-function newPage(number:number,format:DocumentPage["format"]="standard"):DocumentPage{return{id:crypto.randomUUID(),title:`Page ${number}`,format,background:"plain",blocks:[]};}
-function cloneBlock(block:DocumentBlock):DocumentBlock{return{...block,id:crypto.randomUUID(),items:block.items?.map(item=>({...item,id:crypto.randomUUID()}))};}
+function newPage(number: number, format: DocumentPage["format"] = "standard"): DocumentPage {
+  return { id: crypto.randomUUID(), title: `Page ${number}`, format, background: "plain", blocks: [] };
+}
 
-export default function ProposalEditor({value,onChange,onUploadImage,readOnly=false}:{value:DocumentPage[];onChange:(pages:DocumentPage[])=>void;onUploadImage?:(file:File)=>Promise<string|null>;readOnly?:boolean}){
-  const pages=value.length?value:[newPage(1)];const[selectedId,setSelectedId]=useState(pages[0].id);const pageIndex=Math.max(0,pages.findIndex(page=>page.id===selectedId));const page=pages[pageIndex];
-  const setPage=(patch:Partial<DocumentPage>)=>onChange(pages.map((item,index)=>index===pageIndex?{...item,...patch}:item));
-  const selectPage=(id:string)=>setSelectedId(id);
-  const updateBlock=(index:number,patch:Partial<DocumentBlock>)=>setPage({blocks:page.blocks.map((block,itemIndex)=>itemIndex===index?{...block,...patch}:block)});
-  const moveBlock=(index:number,direction:-1|1)=>{const target=index+direction;if(target<0||target>=page.blocks.length)return;const blocks=[...page.blocks];[blocks[index],blocks[target]]=[blocks[target],blocks[index]];setPage({blocks});};
-  const movePage=(index:number,direction:-1|1)=>{const target=index+direction;if(target<0||target>=pages.length)return;const next=[...pages];[next[index],next[target]]=[next[target],next[index]];onChange(next);};
-  const addPage=(format:DocumentPage["format"]="standard")=>{if(pages.length>=40)return;const nextPage=newPage(pages.length+1,format);onChange([...pages,nextPage]);setSelectedId(nextPage.id);};
-  const duplicatePage=()=>{if(pages.length>=40)return;const copy={...page,id:crypto.randomUUID(),title:`${page.title} copy`,blocks:page.blocks.map(cloneBlock)};onChange([...pages.slice(0,pageIndex+1),copy,...pages.slice(pageIndex+1)]);setSelectedId(copy.id);};
-  const removePage=()=>{if(pages.length===1)return;const next=pages.filter((_,index)=>index!==pageIndex);onChange(next);setSelectedId(next[Math.min(pageIndex,next.length-1)].id);};
-  const duplicateBlock=(index:number)=>setPage({blocks:[...page.blocks.slice(0,index+1),cloneBlock(page.blocks[index]),...page.blocks.slice(index+1)]});
-  async function upload(index:number,file?:File){if(!file||!onUploadImage)return;const id=await onUploadImage(file);if(id)updateBlock(index,{fileId:id});}
-  return <div className="proposal-studio"><aside className="proposal-pages"><div><strong>Pages</strong><span>{pages.length} / 40</span></div>{pages.map((item,index)=><button data-page-id={item.id} className={index===pageIndex?"active":""} key={item.id} onClick={()=>selectPage(item.id)}><span>{index+1}</span><span><strong>{item.title}</strong><small>{item.format} · {item.blocks.length} blocks</small></span></button>)}{!readOnly&&<div className="page-add-menu"><button disabled={pages.length>=40} onClick={()=>addPage()}>+ Standard page</button><button disabled={pages.length>=40} onClick={()=>addPage("wide")}>+ Wide page</button><button disabled={pages.length>=40} onClick={()=>addPage("cover")}>+ Cover page</button></div>}</aside><div className="proposal-canvas"><div className="proposal-page-toolbar"><input aria-label="Page title" value={page.title} disabled={readOnly} onChange={event=>setPage({title:event.target.value})}/><select aria-label="Page format" value={page.format} disabled={readOnly} onChange={event=>setPage({format:event.target.value as DocumentPage["format"]})}><option value="standard">Standard</option><option value="wide">Wide showcase</option><option value="cover">Cover</option><option value="letter">Letter</option></select><select aria-label="Page background" value={page.background} disabled={readOnly} onChange={event=>setPage({background:event.target.value as DocumentPage["background"]})}><option value="plain">Plain</option><option value="soft">Soft tint</option><option value="brand">Brand colour</option><option value="dark">Dark</option></select>{!readOnly&&<><button disabled={pageIndex===0} onClick={()=>movePage(pageIndex,-1)}>↑ Page</button><button disabled={pageIndex===pages.length-1} onClick={()=>movePage(pageIndex,1)}>↓ Page</button><button disabled={pages.length>=40} onClick={duplicatePage}>Duplicate</button><button className="danger-text" disabled={pages.length===1} onClick={removePage}>Remove</button></>}</div><div className={`proposal-page-sheet format-${page.format} background-${page.background}`}>{page.blocks.length===0&&<div className="proposal-empty"><strong>Build this page from reusable blocks</strong><p>Add narrative, visuals, proof, pricing, options and acceptance controls in any order.</p></div>}{page.blocks.map((block,index)=><article className={`proposal-block-editor block-${block.type}`} key={block.id}><div className="proposal-block-head"><span className="drag-handle">⋮⋮</span><strong>{palette.find(item=>item.type===block.type)?.label??block.type}</strong><span>{block.locked?"Governed":"Editable"}</span>{!readOnly&&<><button disabled={index===0} onClick={()=>moveBlock(index,-1)} aria-label="Move block up">↑</button><button disabled={index===page.blocks.length-1} onClick={()=>moveBlock(index,1)} aria-label="Move block down">↓</button><button onClick={()=>duplicateBlock(index)}>Duplicate</button><button className="danger-text" disabled={block.locked} onClick={()=>setPage({blocks:page.blocks.filter((_,itemIndex)=>itemIndex!==index)})}>Remove</button></>}</div>{block.type!=="spacer"&&<div className="proposal-block-fields"><label><span>Eyebrow</span><input value={block.eyebrow??""} disabled={readOnly||block.locked} onChange={event=>updateBlock(index,{eyebrow:event.target.value})}/></label><label className="grow"><span>Block heading</span><input value={block.title??""} disabled={readOnly||block.locked&&block.type==="pricing_table"} onChange={event=>updateBlock(index,{title:event.target.value})}/></label><label><span>Layout</span><select value={block.layout??"full"} disabled={readOnly} onChange={event=>updateBlock(index,{layout:event.target.value as DocumentBlock["layout"]})}><option value="full">Full width</option><option value="split">Split</option><option value="cards">Cards</option><option value="compact">Compact</option></select></label><label><span>Align</span><select value={block.alignment??"left"} disabled={readOnly} onChange={event=>updateBlock(index,{alignment:event.target.value as DocumentBlock["alignment"]})}><option value="left">Left</option><option value="center">Centre</option></select></label>{block.type==="pricing_table"&&<label><span>Pricing detail</span><select value={block.display??"full"} disabled={readOnly} onChange={event=>updateBlock(index,{display:event.target.value as DocumentBlock["display"]})}><option value="totals">Totals only</option><option value="lines">Line items</option><option value="full">Lines and totals</option></select></label>}</div>}{!["pricing_table","spacer","feature_grid","timeline","team","faq"].includes(block.type)&&<textarea rows={block.type==="text"||block.type==="terms"?6:3} value={block.content??""} disabled={readOnly||block.locked&&block.type==="signature"} onChange={event=>updateBlock(index,{content:event.target.value})}/>} {["feature_grid","timeline","team","faq"].includes(block.type)&&<div className="structured-items">{(block.items??[]).map((item,itemIndex)=><div key={item.id}><input value={item.title} disabled={readOnly} placeholder={block.type==="faq"?"Question":"Title"} onChange={event=>updateBlock(index,{items:block.items?.map((entry,entryIndex)=>entryIndex===itemIndex?{...entry,title:event.target.value}:entry)})}/><textarea rows={2} value={item.content} disabled={readOnly} placeholder={block.type==="faq"?"Answer":"Description"} onChange={event=>updateBlock(index,{items:block.items?.map((entry,entryIndex)=>entryIndex===itemIndex?{...entry,content:event.target.value}:entry)})}/>{!readOnly&&<button className="danger-text" onClick={()=>updateBlock(index,{items:block.items?.filter((_,entryIndex)=>entryIndex!==itemIndex)})}>Remove</button>}</div>)}{!readOnly&&<button onClick={()=>updateBlock(index,{items:[...(block.items??[]),{id:crypto.randomUUID(),title:"",content:""}]})}>+ Add item</button>}</div>}{block.type==="image"&&onUploadImage&&<label className="image-drop"><span>{block.fileId?"Replace image":"Upload image"}</span><input type="file" accept="image/png,image/jpeg,image/webp" disabled={readOnly} onChange={event=>void upload(index,event.target.files?.[0])}/>{block.fileId&&<small>Image attached to this proposal</small>}</label>}{block.type==="video"&&<label className="media-url"><span>HTTPS video URL</span><input value={block.mediaUrl??""} disabled={readOnly} placeholder="https://…" onChange={event=>updateBlock(index,{mediaUrl:event.target.value})}/></label>}</article>)}</div></div>{!readOnly&&<aside className="block-library"><div><strong>Block library</strong><span>Click to add</span></div>{palette.map(item=><button key={item.type} disabled={page.blocks.length>=60} onClick={()=>setPage({blocks:[...page.blocks,newBlock(item.type)]})}><strong>{item.label}</strong><small>{item.description}</small></button>)}</aside>}</div>;
+function cloneBlock(block: DocumentBlock): DocumentBlock {
+  return { ...block, id: crypto.randomUUID(), items: block.items?.map((item) => ({ ...item, id: crypto.randomUUID() })) };
+}
+
+export default function ProposalEditor({ value, onChange, onUploadImage, pricingPreview, proposalOptions, metadataPreview, context = "quote", readOnly = false }: ProposalEditorProps) {
+  const pages = value.length ? value : [{ id: "proposal-page-fallback", title: "Page 1", format: "standard" as const, background: "plain" as const, blocks: [] }];
+  const [selectedId, setSelectedId] = useState(pages[0].id);
+  const [pageMenuOpen, setPageMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [dataOpen, setDataOpen] = useState(false);
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const pageIndex = Math.max(0, pages.findIndex((page) => page.id === selectedId));
+  const page = pages[pageIndex];
+
+  const setPage = (patch: Partial<DocumentPage>) => onChange(pages.map((candidate, index) => index === pageIndex ? { ...candidate, ...patch } : candidate));
+  const selectPage = (id: string | undefined) => { if (id) setSelectedId(id); setPageMenuOpen(false); };
+  const addPage = (format: DocumentPage["format"]) => {
+    if (pages.length >= 40) return;
+    const nextPage = newPage(pages.length + 1, format);
+    onChange([...pages, nextPage]);
+    setSelectedId(nextPage.id);
+    setPageMenuOpen(false);
+  };
+  const duplicatePage = () => {
+    if (pages.length >= 40) return;
+    const copy: DocumentPage = { ...page, id: crypto.randomUUID(), title: `${page.title} copy`, blocks: page.blocks.map(cloneBlock) };
+    const next = [...pages];
+    next.splice(pageIndex + 1, 0, copy);
+    onChange(next);
+    setSelectedId(copy.id);
+  };
+  const removePage = () => {
+    if (pages.length === 1) return;
+    const next = pages.filter((_, index) => index !== pageIndex);
+    onChange(next);
+    setSelectedId(next[Math.min(pageIndex, next.length - 1)].id);
+  };
+  const movePage = (offset: -1 | 1) => {
+    const target = pageIndex + offset;
+    if (target < 0 || target >= pages.length) return;
+    const next = [...pages];
+    [next[pageIndex], next[target]] = [next[target], next[pageIndex]];
+    onChange(next);
+  };
+  const seedPage = () => {
+    if (page.blocks.length) return;
+    setPage({ blocks: [commonBlock("text"), commonBlock("feature_grid"), commonBlock("pricing_table"), commonBlock("terms"), commonBlock("signature")] });
+  };
+  const copyToken = (token: string) => {
+    if (navigator.clipboard) void navigator.clipboard.writeText(token);
+    setCopiedToken(token);
+    window.setTimeout(() => setCopiedToken(null), 1400);
+  };
+
+  return <div className="puck-proposal-studio">
+    <section className="puck-page-manager" aria-label="Proposal pages">
+      <div className="puck-page-toolbar">
+        <div className="puck-page-navigator">
+          <button type="button" disabled={pageIndex === 0} onClick={() => selectPage(pages[pageIndex - 1]?.id)} aria-label="Previous page">←</button>
+          <label><span>Current page</span><select aria-label="Current proposal page" value={page.id} onChange={(event) => selectPage(event.target.value)}>{pages.map((candidate, index) => <option key={candidate.id} value={candidate.id}>{index + 1}. {candidate.title}</option>)}</select></label>
+          <button type="button" disabled={pageIndex === pages.length - 1} onClick={() => selectPage(pages[pageIndex + 1]?.id)} aria-label="Next page">→</button>
+          <span className="puck-page-summary">{page.blocks.length} {page.blocks.length === 1 ? "block" : "blocks"} · {pages.length} {pages.length === 1 ? "page" : "pages"}</span>
+        </div>
+        {!readOnly && <div className="puck-page-toolbar-actions">
+          {context === "template" && <button type="button" className={dataOpen ? "active" : ""} aria-expanded={dataOpen} onClick={() => setDataOpen((open) => !open)}>Data fields</button>}
+          <button type="button" className={settingsOpen ? "active" : ""} aria-expanded={settingsOpen} onClick={() => setSettingsOpen((open) => !open)}>Page settings</button>
+          <div className="puck-page-add"><button type="button" disabled={pages.length >= 40} aria-expanded={pageMenuOpen} onClick={() => setPageMenuOpen((open) => !open)}>+ Add page</button>{pageMenuOpen && <div role="menu"><button type="button" onClick={() => addPage("standard")}>Standard page<small>Balanced document layout</small></button><button type="button" onClick={() => addPage("wide")}>Wide page<small>Tables and visual content</small></button><button type="button" onClick={() => addPage("cover")}>Cover page<small>Opening statement or section divider</small></button><button type="button" onClick={() => addPage("letter")}>Letter page<small>Formal narrative format</small></button></div>}</div>
+        </div>}
+      </div>
+
+      {context === "template" && dataOpen && <div className="puck-data-fields" role="region" aria-label="Template data fields"><div><strong>Live data fields</strong><p>Copy a field into any heading or content field. The editor shows sample values; each quote resolves its own data.</p></div><div>{proposalMetadataFields.map((field) => <button type="button" key={field.token} onClick={() => copyToken(field.token)}><span>{field.label}</span><code>{copiedToken === field.token ? "Copied" : field.token}</code></button>)}</div></div>}
+
+      {settingsOpen && <div className="puck-page-controls">
+        <label><span>Page title</span><input aria-label="Page title" value={page.title} disabled={readOnly} onChange={(event) => setPage({ title: event.target.value })} /></label>
+        <label><span>Format</span><select aria-label="Page format" value={page.format} disabled={readOnly} onChange={(event) => setPage({ format: event.target.value as DocumentPage["format"] })}><option value="standard">Standard</option><option value="wide">Wide showcase</option><option value="cover">Cover</option><option value="letter">Letter</option></select></label>
+        <label><span>Background</span><select aria-label="Page background" value={page.background} disabled={readOnly} onChange={(event) => setPage({ background: event.target.value as DocumentPage["background"] })}><option value="plain">Plain</option><option value="soft">Soft tint</option><option value="brand">Brand tint</option><option value="dark">Dark</option></select></label>
+        {!readOnly && <div className="puck-page-actions"><button type="button" disabled={pageIndex === 0} onClick={() => movePage(-1)}>Move left</button><button type="button" disabled={pageIndex === pages.length - 1} onClick={() => movePage(1)}>Move right</button><button type="button" disabled={pages.length >= 40} onClick={duplicatePage}>Duplicate</button><button type="button" className="danger-text" disabled={pages.length === 1} onClick={removePage}>Remove</button></div>}
+      </div>}
+    </section>
+
+    {page.blocks.length === 0 && !readOnly && <section className="puck-empty-page"><div><span>+</span><strong>Start with a proven proposal structure</strong><p>Add an editable narrative, outcome grid, governed pricing, commercial terms and formal acceptance.</p></div><button type="button" className="button secondary" onClick={seedPage}>Create starter page</button></section>}
+
+    <EditorErrorBoundary key={`${page.id}:${page.format}:${page.background}:${readOnly}`} context={context} fallback={(retry) => <section className="puck-editor-recovery" role="alert"><div><strong>The visual canvas could not be displayed</strong><p>Your proposal content remains unchanged. Retry the Puck editor to continue.</p></div><button type="button" className="button primary" onClick={retry}>Retry visual editor</button></section>}>
+      <ProposalPuck page={page} readOnly={readOnly} pricingPreview={pricingPreview} proposalOptions={proposalOptions} metadataPreview={metadataPreview} onUploadImage={onUploadImage} onChange={(blocks) => setPage({ blocks })} />
+    </EditorErrorBoundary>
+  </div>;
 }

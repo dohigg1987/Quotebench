@@ -1,10 +1,15 @@
-import QuoteBench from "./quote-bench";
+import QuoteBench, { type Screen } from "./quote-bench";
 import { chatGPTSignInPath, getChatGPTUser } from "./chatgpt-auth";
 import { hasOperatorAccess } from "../db/workspace-store";
 
 export const dynamic = "force-dynamic";
 
-export default async function Home() {
+const screens = new Set<Screen>(["builder", "quotes", "clients", "catalogue", "rules", "activity", "integrations", "team", "usage", "documents", "delivery", "templates", "billing", "governance", "engagement", "ai"]);
+
+export default async function Home({ searchParams }: { searchParams: Promise<{ screen?: string }> }) {
+  const requestedScreen = (await searchParams).screen;
+  const initialScreen = requestedScreen && screens.has(requestedScreen as Screen) ? requestedScreen as Screen : "builder";
+  const returnTo = initialScreen === "builder" ? "/" : `/?screen=${initialScreen}`;
   const user = await getChatGPTUser();
   if (!user) {
     return (
@@ -14,11 +19,11 @@ export default async function Home() {
           <p className="eyebrow">Governed commercial workspace</p>
           <h1>Sign in to QuoteBench</h1>
           <p>Operator access requires an authenticated ChatGPT identity. Recipient proposals use separate, tokenised links.</p>
-          <a className="button primary" href={chatGPTSignInPath("/")}>Sign in with ChatGPT</a>
+          <a className="button primary" href={chatGPTSignInPath(returnTo)}>Sign in with ChatGPT</a>
           <small>Pricing, quote records and audit evidence remain tenant-scoped.</small>
         </section>
       </main>
     );
   }
-  return <QuoteBench currentUser={user} operatorAccess={await hasOperatorAccess(user)} />;
+  return <QuoteBench currentUser={user} operatorAccess={await hasOperatorAccess(user)} initialScreen={initialScreen} />;
 }

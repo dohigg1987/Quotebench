@@ -77,19 +77,61 @@ test("E4 deal code redemption claims a code atomically", async () => {
 
 test("Proposal studio supports multi-page, multi-format and reusable block composition", async () => {
   const editor = await source("app/proposal-editor.tsx");
+  const puck = await source("app/proposal-puck.tsx");
+  const packageJson = await source("package.json");
   const recipient = await source("app/q/[token]/page.tsx");
   const quoteBuilder = await source("app/quote-bench.tsx");
   const quoteRoute = await source("app/api/quotes/route.ts");
-  for (const capability of ["Standard page", "Wide page", "Cover page", "Block library", "feature_grid", "timeline", "team", "faq", "pricing_table", "signature"]) assert.match(editor, new RegExp(capability, "i"));
+  const studio = `${editor}\n${puck}`;
+  for (const capability of ["Standard page", "Wide page", "Cover page", "Narrative", "Commercial", "Visual and structured", "feature_grid", "timeline", "team", "faq", "pricing_table", "signature"]) assert.match(studio, new RegExp(capability, "i"));
+  assert.match(puck, /import \{ Puck, type Config \} from "@puckeditor\/core"/);
+  assert.match(packageJson, /"@puckeditor\/core": "0\.22\.4"/);
   assert.match(recipient, /quote\.document\.pages/);
-  assert.match(quoteBuilder, /Selected template/);
-  assert.match(quoteBuilder, /quote-workflow/);
+  assert.match(quoteBuilder, /Start from a standard template/);
+  assert.match(quoteBuilder, /WorkflowSteps/);
   assert.match(quoteBuilder, /Proposal design workspace/);
   assert.match(quoteBuilder, /cloneTemplatePages/);
   assert.match(quoteBuilder, /templateId:selectedTemplateId/);
-  assert.match(quoteBuilder, /Standard template for this quote/);
+  assert.match(quoteBuilder, /independent, editable copy/);
   assert.match(quoteRoute, /templateId:body\.document\?\.templateId/);
   assert.doesNotMatch(quoteBuilder, /Consulting rate card/i);
+});
+
+test("Reusable templates use the visual editor and bind live quote metadata", async () => {
+  const templates = await source("app/templates-screen.tsx");
+  const studio = await source("app/template-studio.tsx");
+  const editor = await source("app/proposal-editor.tsx");
+  const shell = await source("app/quote-bench.tsx");
+  const home = await source("app/page.tsx");
+  const boundary = await source("app/workspace-error-boundary.tsx");
+  const metadata = await source("lib/proposal-metadata.ts");
+  const recipient = await source("app/q/[token]/page.tsx");
+  const pdf = await source("lib/proposal-pdf.ts");
+  assert.match(templates, /Proposal templates/);
+  assert.match(templates, /<TemplateStudio/);
+  assert.match(studio, /Visual template editor/);
+  assert.match(studio, /context="template"/);
+  assert.match(studio, /import ProposalEditor from "\.\/proposal-editor"/);
+  assert.match(studio, /useCallback/);
+  assert.match(editor, /Data fields/);
+  assert.match(editor, /EditorErrorBoundary/);
+  assert.doesNotMatch(editor, /ReliableBlockEditor/);
+  const puckSource = await source("app/proposal-puck.tsx");
+  assert.match(puckSource, /function renderPuckValue/);
+  assert.match(puckSource, /isValidElement\(value\)/);
+  assert.doesNotMatch(puckSource, /resolveProposalText\(props\.(?:title|content) as string/);
+  const telemetry = await source("app/api/client-errors/route.ts");
+  assert.match(telemetry, /getChatGPTUser/);
+  assert.match(telemetry, /quotebench_client_error/);
+  assert.match(await source("app/proposal-puck.tsx"), /PUCK_IFRAME = \{ enabled: false, waitForStyles: false, syncHostStyles: false \}/);
+  assert.match(shell, /lazy\(\(\) => import\("\.\/templates-screen"\)\)/);
+  assert.match(shell, /searchParams\.set\("screen", screen\)/);
+  assert.match(shell, /WorkspaceErrorBoundary/);
+  assert.match(home, /initialScreen=\{initialScreen\}/);
+  assert.match(boundary, /Reload editor/);
+  for (const token of ["client.name", "client.contact_name", "quote.reference", "proposal.title", "quote.valid_until", "brand.name"]) assert.match(metadata, new RegExp(token.replace(".", "\\.")));
+  assert.match(recipient, /resolveProposalText/);
+  assert.match(pdf, /resolveProposalText/);
 });
 
 test("Service catalogue supports category hierarchy, proposal types and quote-level toggles", async()=>{
@@ -168,13 +210,14 @@ test("Horizon UI foundation and governed-content layout are explicit", async () 
 
 test("Quote-builder internals use container-responsive layouts", async () => {
   const styles = await source("app/globals.css");
+  const premium = await source("app/horizon-premium.css");
   assert.match(styles, /\.builder-workspace\s*\{[^}]*container-name:quote-workspace/);
   assert.match(styles, /\.document-content-block \.section-content\s*\{[^}]*container-name:proposal-editor/);
   assert.match(styles, /\.service-toggle-picker label\s*\{[^}]*grid-template-columns:35px minmax\(0,1fr\) auto/);
   assert.match(styles, /@container quote-workspace \(max-width: 760px\)[\s\S]*\.line-row \{ min-width:0;[^}]*grid-template-columns:repeat\(4,minmax\(0,1fr\)\) 50px/);
-  assert.match(styles, /@container proposal-editor \(max-width: 1050px\)[\s\S]*\.proposal-studio \{[^}]*grid-template-columns:150px minmax\(0,1fr\)/);
-  assert.match(styles, /@container proposal-editor \(max-width: 780px\)[\s\S]*\.proposal-studio \{ grid-template-columns:1fr; \}/);
-  assert.match(styles, /@container proposal-editor \(max-width: 560px\)[\s\S]*\.proposal-block-fields \{ grid-template-columns:1fr; \}/);
+  assert.match(premium, /\.puck-page-controls \{[\s\S]*grid-template-columns: minmax\(220px, 1fr\)/);
+  assert.match(premium, /@container proposal-editor \(max-width: 900px\)[\s\S]*\.puck-page-controls \{ grid-template-columns:/);
+  assert.match(premium, /@container proposal-editor \(max-width: 620px\)[\s\S]*\.puck-page-controls \{ grid-template-columns: 1fr; \}/);
   assert.match(styles, /\.proposal-design-editor \.section-content\s*\{[^}]*container-name:proposal-editor/);
   assert.match(styles, /\.proposal-design-footer\s*\{[^}]*position:sticky/);
   assert.match(styles, /\.button:disabled,\.proposal-support-actions \.disabled-upload\s*\{[^}]*opacity:1/);
@@ -184,7 +227,7 @@ test("Final review and issue is a governed Horizon workflow stage", async () => 
   const quoteBuilder = await source("app/quote-bench.tsx");
   const quoteRoute = await source("app/api/quotes/route.ts");
   const styles = await source("app/globals.css");
-  assert.match(quoteBuilder, /"commercial"\s*\|\s*"proposal"\s*\|\s*"review"/);
+  assert.match(quoteBuilder, /type BuilderStep = "client" \| "services" \| "proposal" \| "governance" \| "review"/);
   for (const capability of ["review-issue-page", "Readiness assessment", "Commercial snapshot", "Approval and issue", "Files and PDF", "ProposalDocument", "copyRecipientLink"]) assert.match(quoteBuilder, new RegExp(capability));
   assert.match(quoteBuilder, /attempt < 10/);
   assert.match(quoteBuilder, /if \(issuing \|\| lifecycleStatus !== "Ready"\) return/);
@@ -195,15 +238,72 @@ test("Final review and issue is a governed Horizon workflow stage", async () => 
   assert.match(styles, /\.horizon-client-document\s*\{/);
 });
 
+test("Presentation architecture uses governed primitives and a five-stage responsive workflow", async () => {
+  const layout = await source("app/layout.tsx");
+  const quoteBuilder = await source("app/quote-bench.tsx");
+  const primitives = await source("app/ui/system.tsx");
+  const styles = await source("app/design-system.css");
+  assert.match(layout, /import "\.\/globals\.css";[\s\S]*import "\.\/design-system\.css";/);
+  for (const step of ["client", "services", "proposal", "governance", "review"]) assert.match(quoteBuilder, new RegExp(`id:\"${step}\"`));
+  assert.match(quoteBuilder, /<WorkflowSteps steps=\{workflowSteps\}/);
+  assert.match(quoteBuilder, /governance-stage-page/);
+  assert.match(quoteBuilder, /Server-enforced governance/);
+  assert.match(primitives, /export function WorkflowSteps/);
+  assert.match(primitives, /export function GovernanceCheck/);
+  for (const token of ["--qb-brand-500", "--qb-navy-900", "--qb-canvas", "--qb-shadow-card", "--qb-radius-lg"]) assert.match(styles, new RegExp(token));
+  assert.match(styles, /\.quote-workflow \{[^}]*grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/);
+  assert.match(styles, /@media \(max-width:1100px\)[\s\S]*\.quote-workflow \{[^}]*overflow-x:auto/);
+  assert.match(styles, /@media \(max-width:768px\)[\s\S]*\.proposal-design-footer,.governance-stage-footer,.review-issue-footer/);
+  assert.match(styles, /font-size:13px/);
+  assert.match(styles, /:focus-visible/);
+  assert.match(styles, /prefers-reduced-motion:reduce/);
+});
+
+test("Enterprise visual system avoids decorative AI-dashboard conventions", async () => {
+  const styles = await source("app/design-system.css");
+  const quoteBuilder = await source("app/quote-bench.tsx");
+  assert.match(styles, /--qb-brand-500:#1d4ed8/);
+  assert.match(styles, /--qb-radius-lg:8px/);
+  assert.match(styles, /--qb-shadow-card:0 1px 2px/);
+  assert.doesNotMatch(styles, /#4318ff|#f3f0ff|#e5deff/);
+  assert.match(styles, /\.quote-workflow \{[^}]*box-shadow:none/);
+  assert.match(styles, /\.button\.primary \{[^}]*box-shadow:none/);
+  assert.match(styles, /\.horizon-client-document > header,.recipient-cover \{ background:var\(--qb-navy-900\)/);
+  assert.match(styles, /\.signin-panel h1 \{ font-family:inherit/);
+  assert.match(quoteBuilder, /Quote totals/);
+  assert.match(quoteBuilder, /Published rule set/);
+  assert.doesNotMatch(quoteBuilder, /Engine verified/);
+});
+
+test("Supplied Horizon UI system is integrated as a licensed, dependency-safe premium layer", async () => {
+  const layout = await source("app/layout.tsx");
+  const premium = await source("app/horizon-premium.css");
+  const shell = await source("app/quote-bench.tsx");
+  const notices = await source("THIRD_PARTY_NOTICES.md");
+  const fonts = await readdir(path.join(root, "public/fonts/dm-sans"));
+  assert.match(layout, /import "\.\/horizon-premium\.css"/);
+  assert.match(premium, /--qb-brand-500: #4318ff/);
+  assert.match(premium, /font-family: "DM Sans"/);
+  assert.match(premium, /Responsive parity with Horizon/);
+  assert.match(shell, /function HorizonIcon/);
+  assert.match(shell, /nav-icon/);
+  assert.match(notices, /Copyright \(c\) 2023 Horizon UI/);
+  for (const font of ["DMSans-Regular.ttf", "DMSans-Medium.ttf", "DMSans-Bold.ttf"]) assert.ok(fonts.includes(font));
+});
+
 test("Proposal page and block mutations preserve selection, identity and governance", async () => {
   const editor = await source("app/proposal-editor.tsx");
-  assert.match(editor, /function cloneBlock[\s\S]*items:block\.items\?\.map\(item=>\(\{\.\.\.item,id:crypto\.randomUUID\(\)\}\)\)/);
-  assert.match(editor, /const addPage=.*setSelectedId\(nextPage\.id\)/);
-  assert.match(editor, /const duplicatePage=.*blocks:page\.blocks\.map\(cloneBlock\).*setSelectedId\(copy\.id\)/);
-  assert.match(editor, /const removePage=.*setSelectedId\(next\[Math\.min\(pageIndex,next\.length-1\)\]\.id\)/);
-  assert.match(editor, /onClick=\{\(\)=>duplicateBlock\(index\)\}/);
-  assert.match(editor, /disabled=\{pages\.length>=40\}/);
-  assert.match(editor, /disabled=\{page\.blocks\.length>=60\}/);
+  const puck = await source("app/proposal-puck.tsx");
+  const adapter = await source("lib/proposal-puck-data.ts");
+  assert.match(editor, /function cloneBlock[\s\S]*items: block\.items\?\.map\(\(item\) => \(\{ \.\.\.item, id: crypto\.randomUUID\(\) \}\)\)/);
+  assert.match(editor, /const addPage =[\s\S]*setSelectedId\(nextPage\.id\)/);
+  assert.match(editor, /const duplicatePage =[\s\S]*blocks: page\.blocks\.map\(cloneBlock\)[\s\S]*setSelectedId\(copy\.id\)/);
+  assert.match(editor, /const removePage =[\s\S]*setSelectedId\(next\[Math\.min\(pageIndex, next\.length - 1\)\]\.id\)/);
+  assert.match(editor, /pages\.length >= 40/);
+  assert.match(adapter, /data\.content\.slice\(0, 60\)/);
+  assert.match(puck, /governedTypes\.has\(type\) \? \{ delete: false, duplicate: false \}/);
+  assert.match(puck, /const permissions = useMemo\(\(\) => \(\{ delete: !readOnly, drag: !readOnly/);
+  assert.match(puck, /permissions=\{permissions\}/);
 });
 
 test("Every application surface participates in the shared fit and reflow contract", async () => {
@@ -227,6 +327,28 @@ test("Every application surface participates in the shared fit and reflow contra
   assert.match(styles, /@media \(max-width: 720px\)[\s\S]*\.signer-editor-row \{ min-width:0 !important;[^}]*grid-template-columns:1fr !important/);
   assert.match(styles, /\.recipient-document \{[^}]*border-radius:20px[^}]*color:var\(--horizon-navy\)/);
   assert.match(styles, /@media \(max-width: 720px\)[\s\S]*\.recipient-accept \{ grid-template-columns:1fr;/);
+});
+
+test("Visual QA surfaces are production-inaccessible and layout-critical controls reflow by container", async () => {
+  const fixture = await source("app/visual-regression/page.tsx");
+  const adminFixture = await source("app/visual-regression/admin/page.tsx");
+  const styles = await source("app/horizon-premium.css");
+  const delivery = await source("app/delivery-screen.tsx");
+  for (const route of [fixture, adminFixture]) {
+    assert.match(route, /process\.env\.NODE_ENV !== "development"/);
+    assert.match(route, /notFound\(\)/);
+  }
+  assert.match(styles, /\.platform-admin-link \{[\s\S]*grid-template-columns: 34px minmax\(0, 1fr\) auto/);
+  assert.match(styles, /\.panel-toolbar > div:first-child \{[\s\S]*display: grid/);
+  assert.match(styles, /\.signer-editor-row \{[\s\S]*min-width: 0 !important;[\s\S]*repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(styles, /\.puck-page-controls \{[\s\S]*display: grid/);
+  assert.match(styles, /\.qb-puck-document \{[\s\S]*max-width: 920px/);
+  assert.match(styles, /\.horizon-client-document \.recipient-content-block > \.document-scope,[\s\S]*\.recipient-document \.recipient-content-block > \.recipient-scope \{[\s\S]*padding: 0;[\s\S]*border-radius: 14px 14px 0 0/);
+  assert.match(styles, /\.document-scope > \.proposal-service-line,[\s\S]*\.recipient-scope > \.proposal-service-line \{[\s\S]*padding-right: 28px;[\s\S]*padding-left: 28px/);
+  assert.match(styles, /@media \(max-width: 560px\)[\s\S]*\.document-totals,[\s\S]*\.recipient-totals \{[\s\S]*padding-right: 18px;[\s\S]*padding-left: 18px/);
+  assert.match(fixture, /requested\.screen === "pricing-preview"/);
+  assert.match(fixture, /requested\.screen === "pricing-recipient"/);
+  for (const label of ["Full name", "Email address", "Role", "Signing order", "Link expiry"]) assert.match(delivery, new RegExp(`>${label}<`));
 });
 
 test("Platform administration is a separate, server-gated multi-tenant control plane", async () => {

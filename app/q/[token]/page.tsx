@@ -5,6 +5,7 @@ import ViewTracker from "./view-tracker";
 import { listQuoteFiles } from "../../../db/document-store";
 import type { DocumentBlock } from "../../../db/document-store";
 import type { CSSProperties } from "react";
+import { resolveProposalText, type ProposalMetadata } from "../../../lib/proposal-metadata";
 /* Proposal images are tenant-controlled R2 objects and preserve authored dimensions. */
 /* eslint-disable @next/next/no-img-element */
 
@@ -23,15 +24,16 @@ function formatMoney(value: number, currency = "GBP") {
 }
 
 function ProposalBlock({block,quote,recurring}:{block:DocumentBlock;quote:PublicQuote;recurring:Array<[string,number]>}){
-  if(block.enabled===false)return null;const classes=`recipient-content-block align-${block.alignment??"left"} layout-${block.layout??"full"}`;const heading=<>{block.eyebrow&&<p className="eyebrow">{block.eyebrow}</p>}{block.title&&<h2>{block.title}</h2>}</>;
+  const metadata:ProposalMetadata={clientName:quote.clientName,contactName:quote.contactName,contactEmail:quote.contactEmail??"",quoteReference:quote.reference,proposalTitle:quote.document.title,validUntil:new Date(`${quote.validUntil}T12:00:00Z`).toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"}),currency:quote.currency,brandName:quote.document.brandName};
+  if(block.enabled===false)return null;const classes=`recipient-content-block align-${block.alignment??"left"} layout-${block.layout??"full"}`;const heading=<>{block.eyebrow&&<p className="eyebrow">{resolveProposalText(block.eyebrow,metadata)}</p>}{block.title&&<h2>{resolveProposalText(block.title,metadata)}</h2>}</>;
   if(block.type==="spacer")return <div className="recipient-spacer"/>;
   if(block.type==="pricing_table")return <div className={classes}>{heading}{block.display!=="totals"&&<section className="recipient-scope service-schedule-scope">{quote.pricingSnapshot.lines.map(line=><div className="proposal-service-line" key={line.lineId}><div><span><strong>{line.itemName}</strong><small>{line.quantity} {line.unitLabel}{line.quantity===1?"":"s"}</small></span><strong>{formatMoney(line.finalPriceMinor,quote.currency)}</strong></div>{(line.description||line.serviceSchedule||line.serviceTerms)&&<section>{line.description&&<p>{line.description}</p>}{line.serviceSchedule&&<div><strong>Service schedule</strong><p>{line.serviceSchedule}</p></div>}{line.serviceTerms&&<div><strong>Service terms</strong><p>{line.serviceTerms}</p></div>}</section>}</div>)}</section>}{block.display!=="lines"&&<section className="recipient-totals"><div><small>ONE-OFF INVESTMENT</small><strong>{formatMoney(quote.oneOffTotalMinor,quote.currency)}</strong></div>{recurring.map(([frequency,amount])=><div key={frequency}><small>{(frequencyLabels[frequency]??frequency).toUpperCase()} RECURRING</small><strong>{formatMoney(amount,quote.currency)}</strong></div>)}</section>}</div>;
-  if(["feature_grid","timeline","team","faq"].includes(block.type))return <div className={classes} style={{"--columns":String(block.columns??(block.layout==="compact"?2:3))} as CSSProperties}>{heading}<div className="recipient-items">{(block.items??[]).map(item=><div key={item.id}><strong>{item.title}</strong><p>{item.content}</p></div>)}</div></div>;
-  if(block.type==="image")return <div className={classes}>{heading}{block.fileId&&<img className="recipient-media" src={`/api/files/${block.fileId}?public=1`} alt={block.title??"Proposal image"}/>}</div>;
-  if(block.type==="video")return <div className={classes}>{heading}{block.content&&<p>{block.content}</p>}{block.mediaUrl?.startsWith("https://")&&<a className="recipient-video" href={block.mediaUrl} target="_blank" rel="noreferrer">Watch video</a>}</div>;
+  if(["feature_grid","timeline","team","faq"].includes(block.type))return <div className={classes} style={{"--columns":String(block.columns??(block.layout==="compact"?2:3))} as CSSProperties}>{heading}<div className="recipient-items">{(block.items??[]).map(item=><div key={item.id}><strong>{resolveProposalText(item.title,metadata)}</strong><p>{resolveProposalText(item.content,metadata)}</p></div>)}</div></div>;
+  if(block.type==="image")return <div className={classes}>{heading}{block.fileId&&<img className="recipient-media" src={`/api/files/${block.fileId}?public=1`} alt={resolveProposalText(block.title,metadata)??"Proposal image"}/>}</div>;
+  if(block.type==="video")return <div className={classes}>{heading}{block.content&&<p>{resolveProposalText(block.content,metadata)}</p>}{block.mediaUrl?.startsWith("https://")&&<a className="recipient-video" href={block.mediaUrl} target="_blank" rel="noreferrer">Watch video</a>}</div>;
   if(block.type==="options")return <div className={classes}>{heading}<div className="recipient-items">{(quote.document.options??[]).map(option=><div key={option.id}><strong>{option.label}</strong><p>Select this option in the formal decision section.</p></div>)}</div></div>;
-  if(block.type==="signature")return <div className={classes}>{heading}<p>{block.content??"The formal decision controls appear below and preserve an immutable evidence record."}</p></div>;
-  return <div className={`${classes} ${block.type==="callout"?"recipient-callout":""}`}>{heading}{block.content&&<p>{block.content}</p>}</div>;
+  if(block.type==="signature")return <div className={classes}>{heading}<p>{resolveProposalText(block.content,metadata)??"The formal decision controls appear below and preserve an immutable evidence record."}</p></div>;
+  return <div className={`${classes} ${block.type==="callout"?"recipient-callout":""}`}>{heading}{block.content&&<p>{resolveProposalText(block.content,metadata)}</p>}</div>;
 }
 
 export default async function RecipientQuotePage({ params }: { params: Promise<{ token: string }> }) {

@@ -38,6 +38,8 @@ Provider-backed transactional email and Stripe Checkout activate when their prod
 
 Production: https://quotebench-app.doh87.chatgpt.site
 
+The application presentation layer adapts the supplied Horizon UI Tailwind React Next.js visual system. Attribution and licence terms are retained in `THIRD_PARTY_NOTICES.md`.
+
 ## Run locally
 
 Requirements: Node.js 22.13 or later.
