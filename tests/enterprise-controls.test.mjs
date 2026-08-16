@@ -66,8 +66,8 @@ test("E6 privacy controls include tracking choice, DSAR export and delayed purge
 
 test("E5 transactional email contains HTML and plain-text alternatives", async () => {
   const notifications = await source("db/notification-store.ts");
-  assert.match(notifications, /html:string;text:string/);
-  assert.match(notifications, /html:input\.html,text:input\.text/);
+  assert.match(notifications, /html:\s*string;\s*text:\s*string/);
+  assert.match(notifications, /html:\s*input\.html,\s*text:\s*input\.text/);
 });
 
 test("E4 deal code redemption claims a code atomically", async () => {

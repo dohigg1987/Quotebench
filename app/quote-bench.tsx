@@ -220,7 +220,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
   }, [preview]);
 
   useEffect(() => {
-    fetch(hasSaved?`/api/documents?reference=${encodeURIComponent(reference)}`:"/api/documents", { cache: "no-store" }).then((response) => response.json()).then((payload: { files?: QuoteFile[];templates?:DocumentTemplate[] }) => {setQuoteFiles(payload.files ?? []);setProposalTemplates(payload.templates??[]);}).catch(() => undefined);
+    fetch(hasSaved?`/api/documents?reference=${encodeURIComponent(reference)}`:"/api/documents", { cache: "no-store" }).then(async (response) => (await response.json()) as { files?: QuoteFile[];templates?:DocumentTemplate[] }).then((payload) => {setQuoteFiles(payload.files ?? []);setProposalTemplates(payload.templates??[]);}).catch(() => undefined);
   }, [hasSaved, reference]);
 
   useEffect(() => {
@@ -551,7 +551,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
                 <div className="proposal-options-editor"><span>Acceptance options, optional</span>{proposalOptions.map((option, index) => <div key={option.id}><input value={option.label} placeholder={`Option ${index + 1}`} onChange={(event) => setProposalOptions((current) => current.map((entry) => entry.id === option.id ? { ...entry, label: event.target.value } : entry))} /><button className="text-button danger-text" onClick={() => setProposalOptions((current) => current.filter((entry) => entry.id !== option.id))}>Remove</button></div>)}<button className="text-button" onClick={() => setProposalOptions((current) => [...current, { id: crypto.randomUUID(), label: "" }])}>+ Add option</button></div>
               </div>
               <ProposalEditor value={proposalPages} onChange={setProposalPages} onUploadImage={uploadProposalImage} readOnly={locked}/>
-              <div className="attachment-panel"><div><strong>Supporting files</strong><p>Attachments are stored securely and appear on the recipient page for this quote version.</p></div><label className={`button secondary ${hasSaved ? "" : "disabled-upload"}`}>Attach file<input type="file" disabled={!hasSaved} accept=".pdf,.png,.jpg,.jpeg,.txt,.docx" onChange={(event) => void uploadAttachment(event.target.files?.[0])} /></label><button className="button secondary" disabled={!hasSaved} onClick={requestPdf}>Generate PDF</button></div>{quoteFiles.length > 0 && <div className="quote-files">{quoteFiles.map((file) => <a key={file.id} href={`/api/files/${file.id}`} target="_blank" rel="noreferrer"><span>{file.kind === "pdf" ? "PDF" : "FILE"}</span><strong>{file.filename}</strong><small>{Math.ceil(file.sizeBytes / 1024)} KB</small></a>)}</div>}{pdfState && (pdfState.startsWith("PDF ready|") ? <a className="pdf-ready-link" href={pdfState.split("|")[1]} target="_blank" rel="noreferrer">PDF ready, download now</a> : <p className="pdf-state">{pdfState}</p>)}
+              <div className="attachment-panel"><div><strong>Supporting files</strong><p>Attachments are stored securely and appear on the recipient page for this quote version.</p></div><label className={`button secondary ${hasSaved ? "" : "disabled-upload"}`}>Attach file<input type="file" disabled={!hasSaved} accept=".pdf,.png,.jpg,.jpeg,.txt" onChange={(event) => void uploadAttachment(event.target.files?.[0])} /></label><button className="button secondary" disabled={!hasSaved} onClick={requestPdf}>Generate PDF</button></div>{quoteFiles.length > 0 && <div className="quote-files">{quoteFiles.map((file) => <a key={file.id} href={`/api/files/${file.id}`} target="_blank" rel="noreferrer"><span>{file.kind === "pdf" ? "PDF" : "FILE"}</span><strong>{file.filename}</strong><small>{Math.ceil(file.sizeBytes / 1024)} KB</small></a>)}</div>}{pdfState && (pdfState.startsWith("PDF ready|") ? <a className="pdf-ready-link" href={pdfState.split("|")[1]} target="_blank" rel="noreferrer">PDF ready, download now</a> : <p className="pdf-state">{pdfState}</p>)}
             </div>
           </section>
         </div>
@@ -927,7 +927,7 @@ export default function QuoteBench({ currentUser }: { currentUser: ChatGPTUser |
     };
   }, [currentUserEmail]);
 
-  useEffect(()=>{if(!currentUserEmail)return;fetch("/api/workspaces",{cache:"no-store"}).then(response=>response.json()).then((payload:{workspaces?:Array<Record<string,unknown>>})=>setWorkspaces((payload.workspaces??[]).map(row=>({id:String(row.id),name:String(row.name),currency:String(row.currency),role:String(row.role) as Workspace["role"]})))).catch(()=>undefined);},[currentUserEmail]);
+  useEffect(()=>{if(!currentUserEmail)return;fetch("/api/workspaces",{cache:"no-store"}).then(async response=>(await response.json()) as {workspaces?:Array<Record<string,unknown>>}).then(payload=>setWorkspaces((payload.workspaces??[]).map(row=>({id:String(row.id),name:String(row.name),currency:String(row.currency),role:String(row.role) as Workspace["role"]})))).catch(()=>undefined);},[currentUserEmail]);
 
   return (
     <div className="app-shell">

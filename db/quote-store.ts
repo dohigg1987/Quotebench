@@ -315,7 +315,8 @@ export async function getInternalQuote(tenantId: string, reference: string): Pro
   const row = await db.prepare(`SELECT id, client_id, reference, client_name, contact_name, contact_email, valid_until,
       status, currency, one_off_total_minor, recurring_annualised_minor, margin_bp,
       updated_at, owner_email, share_token, issued_at, first_viewed_at, accepted_at,
-      accepted_by, line_items_json, answers_json, document_json, revision_of,
+      accepted_by, line_items_json, answers_json, pricing_snapshot_json,
+      document_json, rule_set_version, revision_of,
       superseded_by, declined_at, decline_reason
     FROM quotes WHERE tenant_id = ? AND reference = ?`)
     .bind(tenantId, reference)
@@ -325,7 +326,8 @@ export async function getInternalQuote(tenantId: string, reference: string): Pro
       one_off_total_minor: number; recurring_annualised_minor: number; margin_bp: number | null;
       updated_at: string; owner_email: string; share_token: string | null; issued_at: string | null;
       first_viewed_at: string | null; accepted_at: string | null; accepted_by: string | null;
-      line_items_json: string; answers_json: string; document_json: string; revision_of: string | null;
+      line_items_json: string; answers_json: string; pricing_snapshot_json: string;
+      document_json: string; rule_set_version: number; revision_of: string | null;
       superseded_by: string | null; declined_at: string | null; decline_reason: string | null;
     }>();
   if (!row) return null;
@@ -635,7 +637,12 @@ export async function recordQualifiedView(token: string) {
   return { ...quote, status: "Viewed" as const };
 }
 
-export async function acceptQuote(token: string, acceptedBy: string, userAgent: string | null, selectedOptionId?: string | null) {
+async function sha256(value: string): Promise<string> {
+  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export async function acceptQuote(token: string, acceptedBy: string, userAgent: string | null, selectedOptionId?: string | null, ipAddress?: string | null) {
   const quote = await getPublicQuote(token);
   if (!quote) throw new Error("This quote link is invalid or unavailable.");
   if (quote.status === "Accepted") return quote;
@@ -649,18 +656,20 @@ export async function acceptQuote(token: string, acceptedBy: string, userAgent: 
   if (options.length > 0 && !options.some((option) => option.id === selectedOptionId)) throw new Error("Select exactly one proposal option before accepting.");
   const db = await database();
   const evidence = {
+    evidenceVersion: 2,
+    certificateId: crypto.randomUUID(),
     acceptedBy,
     acceptedAt: new Date().toISOString(),
     consent: "I accept this proposal and confirm that I am authorised to proceed.",
     userAgent,
+    ipAddressHash: ipAddress ? await sha256(ipAddress) : null,
     quoteReference: quote.reference,
     ruleSetVersion: quote.ruleSetVersion,
-    recipientToken: token,
+    recipientTokenHash: await sha256(token),
     recipientEmail: quote.recipientEmail ?? null,
     selectedOptionId: selectedOptionId ?? null,
   };
-  const acceptanceSnapshot = {
-    quote: {
+  const quoteSnapshot = {
       reference: quote.reference,
       clientName: quote.clientName,
       contactName: quote.contactName,
@@ -672,24 +681,28 @@ export async function acceptQuote(token: string, acceptedBy: string, userAgent: 
       ruleSetVersion: quote.ruleSetVersion,
       pricing: quote.pricingSnapshot,
       document: quote.document,
-    },
-    evidence,
   };
-  await db.batch([
-    db.prepare(`UPDATE quotes SET status = 'Accepted', accepted_at = CURRENT_TIMESTAMP,
+  const acceptanceSnapshot = { quote: quoteSnapshot, evidence: { ...evidence, quoteSnapshotHash: await sha256(JSON.stringify(quoteSnapshot)) } };
+  const accepted = await db.prepare(`UPDATE quotes SET status = 'Accepted', accepted_at = CURRENT_TIMESTAMP,
       accepted_by = ?, acceptance_evidence_json = ?, acceptance_snapshot_json = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND status IN ('Issued', 'Viewed')`)
-      .bind(acceptedBy, JSON.stringify(evidence), JSON.stringify(acceptanceSnapshot), quote.id),
-    db.prepare(`INSERT INTO quote_events (
+      WHERE id = ? AND status IN ('Issued', 'Viewed') RETURNING accepted_at`)
+      .bind(acceptedBy, JSON.stringify(acceptanceSnapshot.evidence), JSON.stringify(acceptanceSnapshot), quote.id)
+      .first<{ accepted_at: string }>();
+  if (!accepted) {
+    const current = await getPublicQuote(token);
+    if (current?.status === "Accepted") return current;
+    throw new Error("This proposal changed while acceptance was being recorded. Refresh and try again.");
+  }
+  await db.prepare(`INSERT INTO quote_events (
       id, tenant_id, quote_reference, actor_email, event_type, payload_json
     ) VALUES (?, ?, ?, ?, 'quote.accepted', ?)`)
-      .bind(crypto.randomUUID(), quote.tenantId, quote.reference, acceptedBy, JSON.stringify(evidence)),
-  ]);
+      .bind(crypto.randomUUID(), quote.tenantId, quote.reference, acceptedBy, JSON.stringify(acceptanceSnapshot.evidence))
+      .run();
   const { emitWebhooks } = await import("./integration-store");
   await emitWebhooks(quote.tenantId, "quote.accepted", { reference: quote.reference, acceptedBy });
   const { sendAcceptanceNotifications } = await import("./notification-store");
   await sendAcceptanceNotifications({ reference: quote.reference, clientName: quote.clientName, recipientEmail: quote.recipientEmail ?? quote.contactEmail, ownerEmail: quote.ownerEmail, acceptedBy, token });
-  return { ...quote, status: "Accepted" as const, acceptedBy, acceptedAt: evidence.acceptedAt };
+  return { ...quote, status: "Accepted" as const, acceptedBy, acceptedAt: accepted.accepted_at };
 }
 
 export async function markQuoteAcceptedOffline(tenantId: string, reference: string, acceptedBy: string, actorEmail: string) {

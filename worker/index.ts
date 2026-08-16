@@ -40,13 +40,22 @@ const worker = {
       }, allowedWidths);
     }
 
-    const response = await handler.fetch(request, env, ctx);
+    const stateChanging = ["POST", "PUT", "PATCH", "DELETE"].includes(request.method.toUpperCase());
+    const webhookExempt = url.pathname === "/api/billing/webhook";
+    const requestOrigin = request.headers.get("origin");
+    const fetchSite = request.headers.get("sec-fetch-site");
+    const crossOrigin = requestOrigin ? requestOrigin !== url.origin : fetchSite === "cross-site";
+    const missingBrowserProvenance = !requestOrigin && !fetchSite;
+    const rejected = url.pathname.startsWith("/api/") && stateChanging && !webhookExempt && (crossOrigin || missingBrowserProvenance);
+    const response = rejected
+      ? Response.json({ error: "Request origin could not be verified." }, { status: 403 })
+      : await handler.fetch(request, env, ctx);
     const secured = new Response(response.body, response);
     secured.headers.set("strict-transport-security", "max-age=31536000; includeSubDomains");
     secured.headers.set("x-content-type-options", "nosniff");
     secured.headers.set("referrer-policy", "strict-origin-when-cross-origin");
     secured.headers.set("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=()");
-    secured.headers.set("content-security-policy", "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'");
+    secured.headers.set("content-security-policy", "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; upgrade-insecure-requests");
     secured.headers.set("x-request-id", request.headers.get("x-request-id") ?? crypto.randomUUID());
     if (url.pathname.startsWith("/api/")) secured.headers.set("cache-control", "no-store");
     return secured;

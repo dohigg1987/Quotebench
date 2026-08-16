@@ -19,7 +19,13 @@ export async function POST(
     const { token } = await params;
     const rate = await enforceTokenRateLimit(token, "accept", 10);
     if (!rate.allowed) return Response.json({ error: "Too many acceptance attempts." }, { status: 429, headers: { "retry-after": "60" } });
-    const quote = await acceptQuote(token, acceptedBy, request.headers.get("user-agent"), body.selectedOptionId);
+    const quote = await acceptQuote(
+      token,
+      acceptedBy,
+      request.headers.get("user-agent"),
+      body.selectedOptionId,
+      request.headers.get("cf-connecting-ip"),
+    );
     return Response.json({ status: quote.status, acceptedAt: quote.acceptedAt });
   } catch (error) {
     return Response.json(

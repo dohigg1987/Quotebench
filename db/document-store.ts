@@ -69,12 +69,24 @@ export async function saveDocumentTemplate(tenantId: string, input: DocumentTemp
   await db.prepare(`INSERT INTO document_templates (id, tenant_id, name, industry, blocks_json, is_default, created_by) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, industry=excluded.industry, blocks_json=excluded.blocks_json, is_default=excluded.is_default, updated_at=CURRENT_TIMESTAMP`).bind(input.id || crypto.randomUUID(), tenantId, input.name.trim(), input.industry, JSON.stringify({pages}), input.isDefault ? 1 : 0, actorEmail).run();
 }
 
-export async function putStoredFile(tenantId: string, actorEmail: string, file: File, kind: "logo" | "image" | "attachment", quoteReference: string | null) {
-  await ensureDocuments(tenantId, actorEmail);
+export async function validateStoredFile(file: File, kind: "logo" | "image" | "attachment") {
   const limit = kind === "image" || kind === "logo" ? 10_000_000 : 25_000_000;
   if (file.size > limit) throw new Error(`File exceeds the ${limit / 1_000_000} MB limit.`);
-  const allowed = kind === "logo" ? ["image/png", "image/svg+xml"] : kind === "image" ? ["image/png", "image/jpeg", "image/webp"] : ["application/pdf", "image/png", "image/jpeg", "text/plain", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+  const allowed = kind === "logo" ? ["image/png", "image/jpeg", "image/webp"] : kind === "image" ? ["image/png", "image/jpeg", "image/webp"] : ["application/pdf", "image/png", "image/jpeg", "text/plain"];
   if (!allowed.includes(file.type)) throw new Error("This file type is not supported.");
+  const header = new Uint8Array(await file.slice(0, 16).arrayBuffer());
+  const starts = (...bytes: number[]) => bytes.every((byte, index) => header[index] === byte);
+  const validSignature = file.type === "image/png" ? starts(0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a)
+    : file.type === "image/jpeg" ? starts(0xff,0xd8,0xff)
+    : file.type === "image/webp" ? starts(0x52,0x49,0x46,0x46) && String.fromCharCode(...header.slice(8,12)) === "WEBP"
+    : file.type === "application/pdf" ? String.fromCharCode(...header.slice(0,5)) === "%PDF-"
+    : file.type === "text/plain" ? !header.includes(0) : false;
+  if (!validSignature) throw new Error("File content does not match its declared type.");
+}
+
+export async function putStoredFile(tenantId: string, actorEmail: string, file: File, kind: "logo" | "image" | "attachment", quoteReference: string | null) {
+  await ensureDocuments(tenantId, actorEmail);
+  await validateStoredFile(file, kind);
   const id = crypto.randomUUID(); const key = `${tenantId}/${kind}/${id}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
   const storage = await bucket(); await storage.put(key, await file.arrayBuffer(), { httpMetadata: { contentType: file.type } });
   const db = await database(); await db.prepare(`INSERT INTO stored_files (id, tenant_id, quote_reference, kind, filename, content_type, size_bytes, r2_key, public, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, tenantId, quoteReference, kind, file.name, file.type, file.size, key, quoteReference ? 1 : 0, actorEmail).run();
@@ -82,7 +94,7 @@ export async function putStoredFile(tenantId: string, actorEmail: string, file: 
 }
 
 export async function listQuoteFiles(tenantId: string, reference: string) { await ensureDocuments(tenantId); const db = await database(); const result = await db.prepare("SELECT id, filename, content_type, size_bytes, kind FROM stored_files WHERE tenant_id = ? AND quote_reference = ? AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP) ORDER BY created_at").bind(tenantId, reference).all<{ id: string; filename: string; content_type: string; size_bytes: number; kind: string }>(); return result.results.map((row) => ({ id: row.id, filename: row.filename, contentType: row.content_type, sizeBytes: row.size_bytes, kind: row.kind })); }
-export async function getStoredFile(id: string, tenantId?: string) { await ensureDocumentSchema(); const db = await database(); const row = await db.prepare("SELECT r2_key, filename, content_type, public, expires_at, tenant_id FROM stored_files WHERE id = ?").bind(id).first<{ r2_key: string; filename: string; content_type: string; public: number; expires_at: string | null; tenant_id: string }>(); if (!row || (tenantId && row.tenant_id !== tenantId) || (!tenantId && row.public !== 1) || (row.expires_at && new Date(`${row.expires_at.replace(" ", "T")}Z`).getTime() < Date.now())) return null; const object = await (await bucket()).get(row.r2_key); return object ? { object, filename: row.filename, contentType: row.content_type, tenantId: row.tenant_id } : null; }
+export async function getStoredFile(id: string, tenantId?: string) { await ensureDocumentSchema(); const db = await database(); const row = await db.prepare("SELECT r2_key, filename, content_type, kind, public, expires_at, tenant_id FROM stored_files WHERE id = ?").bind(id).first<{ r2_key: string; filename: string; content_type: string; kind: string; public: number; expires_at: string | null; tenant_id: string }>(); if (!row || (tenantId && row.tenant_id !== tenantId) || (!tenantId && row.public !== 1) || (row.expires_at && new Date(`${row.expires_at.replace(" ", "T")}Z`).getTime() < Date.now())) return null; const object = await (await bucket()).get(row.r2_key); return object ? { object, filename: row.filename, contentType: row.content_type, kind: row.kind, tenantId: row.tenant_id } : null; }
 
 export async function createPdfJob(tenantId: string, reference: string, actorEmail: string) { await ensureDocuments(tenantId, actorEmail); const db = await database(); const existing = await db.prepare("SELECT id, status, file_id FROM pdf_jobs WHERE tenant_id = ? AND quote_reference = ? AND status IN ('Queued','Processing','Completed') ORDER BY created_at DESC LIMIT 1").bind(tenantId, reference).first<{ id: string; status: string; file_id: string | null }>(); if (existing) return existing; const id = crypto.randomUUID(); await db.prepare("INSERT INTO pdf_jobs (id, tenant_id, quote_reference, status, requested_by) VALUES (?, ?, ?, 'Queued', ?)").bind(id, tenantId, reference, actorEmail).run(); return { id, status: "Queued", file_id: null }; }
 export async function getPdfJob(tenantId: string, id: string) { await ensureDocuments(tenantId); const db = await database(); return db.prepare("SELECT id, quote_reference, status, attempts, file_id, error, created_at, updated_at FROM pdf_jobs WHERE tenant_id = ? AND id = ?").bind(tenantId, id).first<Record<string, unknown>>(); }
