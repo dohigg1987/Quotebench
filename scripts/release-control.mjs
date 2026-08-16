@@ -12,18 +12,26 @@ const method = action === "migrate" ? "POST" : "GET";
 const body = action === "migrate" ? JSON.stringify({ action: "migrate" }) : "";
 const timestamp = String(Date.now());
 const signature = await createReleaseControlSignature(secret, { timestamp, method, pathname, commit, body });
-const response = await fetch(new URL(pathname, baseUrl), {
-  method,
-  headers: {
-    "content-type": "application/json",
-    "x-quotebench-release-timestamp": timestamp,
-    "x-quotebench-release-commit": commit,
-    "x-quotebench-release-signature": signature,
-    "Cloudflare-Workers-Version-Overrides": `${workerName}="${versionId}"`,
-  },
-  body: body || undefined,
-});
-const text = await response.text();
+let response;
+let text = "";
+for (let attempt = 1; attempt <= 10; attempt += 1) {
+  response = await fetch(new URL(pathname, baseUrl), {
+    method,
+    headers: {
+      "content-type": "application/json",
+      "x-quotebench-release-timestamp": timestamp,
+      "x-quotebench-release-commit": commit,
+      "x-quotebench-release-signature": signature,
+      "Cloudflare-Workers-Version-Overrides": `${workerName}="${versionId}"`,
+    },
+    body: body || undefined,
+  });
+  text = await response.text();
+  if (response.ok || ![403, 404].includes(response.status) || attempt === 10) break;
+  console.warn(`Target version is not globally available yet (${response.status}); retrying ${attempt}/10.`);
+  await new Promise((resolve) => setTimeout(resolve, 2_000));
+}
+if (!response) throw new Error("Release control request did not run.");
 if (!response.ok) throw new Error(`Release control ${action} failed (${response.status}): ${text.slice(0, 1_000)}`);
 const payload = JSON.parse(text);
 if (!payload.ok || payload.release?.commit !== commit || payload.release?.cloudflareVersionId !== versionId || payload.release?.artifactDigest === "unknown") {
