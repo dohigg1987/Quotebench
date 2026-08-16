@@ -1,4 +1,6 @@
 import { Client, type QueryResultRow } from "pg";
+import type { ReleaseMigration } from "./release-migrations.ts";
+import { RELEASE_SMOKE_TENANT_ID } from "../lib/release-assurance.ts";
 
 export type DatabaseResult<T = Record<string, unknown>> = {
   results: T[];
@@ -152,6 +154,63 @@ export async function getDatabase(message = "Database storage is unavailable."):
 export async function databaseHealthcheck(): Promise<boolean> {
   try {
     return Boolean(await (await getDatabase()).prepare("SELECT 1 AS ok").first());
+  } catch {
+    return false;
+  }
+}
+
+const MIGRATION_LEDGER_SCHEMA = `CREATE TABLE IF NOT EXISTS _quotebench_schema_migrations (
+  id TEXT PRIMARY KEY,
+  description TEXT NOT NULL,
+  checksum TEXT NOT NULL,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+)`;
+
+async function migrationChecksum(migration: ReleaseMigration) {
+  const bytes = new TextEncoder().encode(JSON.stringify({ id: migration.id, description: migration.description, statements: migration.statements }));
+  return [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((value) => value.toString(16).padStart(2, "0")).join("");
+}
+
+export async function applyReleaseMigrations(migrations: ReleaseMigration[]) {
+  const { env } = await import("cloudflare:workers") as { env: RuntimeEnv };
+  const connectionString = env.HYPERDRIVE?.connectionString || env.DATABASE_URL;
+  if (!connectionString) throw new Error("Release migrations require the configured Postgres connection.");
+  return withClient(connectionString, async (client) => {
+    await client.query("BEGIN");
+    try {
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", ["quotebench-release-migrations-v1"]);
+      await client.query(MIGRATION_LEDGER_SCHEMA);
+      const applied: string[] = [];
+      const unchanged: string[] = [];
+      for (const migration of migrations) {
+        const checksum = await migrationChecksum(migration);
+        const existing = await client.query<{ checksum: string }>("SELECT checksum FROM _quotebench_schema_migrations WHERE id = $1", [migration.id]);
+        if (existing.rows[0]) {
+          if (existing.rows[0].checksum !== checksum) throw new Error(`Applied migration ${migration.id} no longer matches its recorded checksum.`);
+          unchanged.push(migration.id);
+          continue;
+        }
+        for (const statement of migration.statements) await client.query(translateSql(statement));
+        await client.query("INSERT INTO _quotebench_schema_migrations (id, description, checksum) VALUES ($1, $2, $3)", [migration.id, migration.description, checksum]);
+        applied.push(migration.id);
+      }
+      await client.query("COMMIT");
+      return { applied, unchanged };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    }
+  });
+}
+
+export async function releaseSchemaHealthcheck(expectedMigrationIds: string[]) {
+  try {
+    const db = await getDatabase();
+    const tenant = await db.prepare("SELECT id, billing_enabled FROM _quotebench_release_tenants WHERE id = ?").bind(RELEASE_SMOKE_TENANT_ID).first<{ id: string; billing_enabled: number }>();
+    if (!tenant || tenant.billing_enabled !== 0) return false;
+    const rows = await db.prepare("SELECT id FROM _quotebench_schema_migrations ORDER BY id").all<{ id: string }>();
+    const applied = new Set(rows.results.map((row) => row.id));
+    return expectedMigrationIds.every((id) => applied.has(id));
   } catch {
     return false;
   }
