@@ -1,0 +1,22 @@
+name: Deploy QuoteBench to preprod
+
+on:
+  workflow_run:
+    workflows: ["Deploy QuoteBench to test"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+  issues: write
+
+jobs:
+  deploy-preprod:
+    if: github.event.workflow_run.conclusion == 'success'
+    uses: ./.github/workflows/promote.yml
+    with:
+      target: preprod
+      commit: ${{ github.event.workflow_run.head_sha }}
+    secrets: inherit
