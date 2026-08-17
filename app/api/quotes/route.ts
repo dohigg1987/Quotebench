@@ -28,6 +28,10 @@ type SaveQuoteBody = {
   document?: { title?: string; introduction?: string; scopeHeading?: string; brandName?: string; brandInitials?: string; proposalTypeId?:string; templateId?:string; depositMinor?:number; options?:Array<{id:string;label:string}>; pages?:DocumentPage[] };
 };
 
+function initialsFor(value: string) {
+  return value.trim().split(/\s+/).filter(Boolean).map((part) => part[0]).join("").slice(0, 4).toUpperCase() || "QB";
+}
+
 function unauthorised() {
   return Response.json({ error: "Sign in to QuoteBench to access saved quotes." }, { status: 401 });
 }
@@ -59,7 +63,7 @@ export async function POST(request: Request) {
     const clientName = body.clientName?.trim() ?? "";
     const contactName = body.contactName?.trim() ?? "";
     const contactEmail = body.contactEmail?.trim().toLowerCase() ?? "";
-    const reference = body.reference?.trim() ?? "QB-1049";
+    const reference = body.reference?.trim() ?? "QB-1001";
     const validUntil = body.validUntil?.trim() ?? "";
     const status = body.status === "Ready" ? "Ready" : "Draft";
     const quoteDiscount = Number(body.quoteDiscount ?? 0);
@@ -98,11 +102,11 @@ export async function POST(request: Request) {
       }
     }
     const document = {
-      title: body.document?.title?.trim() || "Transformation delivery partnership",
-      introduction: body.document?.introduction?.trim() || "This proposal combines focused strategy, delivery capacity and an ongoing advisory relationship.",
-      scopeHeading: body.document?.scopeHeading?.trim() || "A practical route to measurable change",
-      brandName: body.document?.brandName?.trim() || "Finance Advisory Partners",
-      brandInitials: body.document?.brandInitials?.trim().slice(0, 4).toUpperCase() || "FAP",
+      title: body.document?.title?.trim() || "Commercial proposal",
+      introduction: body.document?.introduction?.trim() || "This proposal sets out the agreed scope, pricing and commercial terms.",
+      scopeHeading: body.document?.scopeHeading?.trim() || "Scope and investment",
+      brandName: body.document?.brandName?.trim() || member.workspaceName,
+      brandInitials: body.document?.brandInitials?.trim().slice(0, 4).toUpperCase() || initialsFor(member.workspaceName),
       proposalTypeId:body.document?.proposalTypeId?.trim().slice(0,80)||undefined,
       templateId:body.document?.templateId?.trim().slice(0,160)||undefined,
       depositMinor: Math.max(0,Math.round(Number(body.document?.depositMinor??0))),

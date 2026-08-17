@@ -466,3 +466,41 @@ test("Operator customer records expose governed profile, user, support and secur
   assert.match(styles, /@media \(max-width: 1180px\)[\s\S]*\.operator-users-layout \{ grid-template-columns:1fr; \}/);
   assert.match(styles, /@media \(max-width: 780px\)[\s\S]*\.operator-profile-grid/);
 });
+
+test("Commercial activity is tenant-scoped, actionable and never populated with fabricated buyers", async () => {
+  const shell = await source("app/quote-bench.tsx");
+  const route = await source("app/api/activity/route.ts");
+  const store = await source("db/delivery-store.ts");
+  const styles = await source("app/commercial-grade.css");
+  assert.match(route, /requireWorkspaceContext\(user, \["owner", "admin", "quoter"\]\)/);
+  assert.match(route, /listWorkspaceActivity\(context\.tenantId\)/);
+  assert.match(store, /WHERE e\.tenant_id=\?/);
+  assert.match(shell, /Open quote and act/);
+  assert.match(shell, /Inspect evidence/);
+  assert.match(styles, /\.activity-metric-strip/);
+  for (const fabricated of ["Stellar Grid", "Maya Patel", "Northstar Analytics", "7 recipients are reviewing proposals"]) assert.doesNotMatch(shell, new RegExp(fabricated));
+});
+
+test("New quotes start clean and inherit workspace identity instead of demo consultancy data", async () => {
+  const shell = await source("app/quote-bench.tsx");
+  const route = await source("app/api/quotes/route.ts");
+  const recipient = await source("app/q/[token]/page.tsx");
+  assert.match(shell, /workspace=\{workspace\}/);
+  assert.match(shell, /disabled=\{!reviewReadiness\[0\]\.complete\}/);
+  assert.match(route, /brandName: body\.document\?\.brandName\?\.trim\(\) \|\| member\.workspaceName/);
+  assert.doesNotMatch(route, /Finance Advisory Partners/);
+  assert.doesNotMatch(recipient, /Finance Advisory Partners/);
+});
+
+test("Owner command centre unifies platform, customer, plan, Stripe and operational control", async () => {
+  const operator = await source("app/operator-screen.tsx");
+  const store = await source("db/operator-store.ts");
+  const styles = await source("app/commercial-grade.css");
+  for (const capability of ["QuoteBench command centre", "Platform health", "Plans and entitlements", "Stripe and payments", "Customer control", "Release commit"]) assert.match(operator, new RegExp(capability));
+  for (const measure of ["active_users", "failed_pdfs_24h", "billing_failures_24h", "security_failures_24h", "collected_month_minor", "outstanding_minor"]) assert.match(store, new RegExp(measure));
+  assert.match(store, /STRIPE_WEBHOOK_SECRET/);
+  assert.match(store, /CF_VERSION_METADATA/);
+  assert.match(styles, /\.command-health-grid/);
+  assert.match(styles, /@media \(max-width: 850px\)[\s\S]*\.command-two-column/);
+});
+

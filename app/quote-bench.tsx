@@ -11,7 +11,7 @@ import {
   type RuleSet,
 } from "../packages/pricing-engine/src/index";
 import type { QuoteBenchUser } from "./auth";
-import { catalogue, defaultRuleSet, seedQuotes } from "./demo-data";
+import { catalogue, defaultRuleSet } from "./demo-data";
 import IntegrationsScreen from "./integrations-screen";
 import TeamScreen from "./team-screen";
 import UsageScreen from "./usage-screen";
@@ -25,17 +25,28 @@ import AiAssistanceScreen from "./ai-assistance-screen";
 import MarketSettingsScreen from "./market-settings-screen";
 import type { DocumentPage, DocumentTemplate } from "../db/document-store";
 import type { ProposalType, ServiceCategory } from "../db/catalogue-store";
+import type { ActivityInsights } from "../lib/activity-insights";
 import { resolveProposalText, type ProposalMetadata } from "../lib/proposal-metadata";
 import { GovernanceCheck, WorkflowSteps, type WorkflowStep } from "./ui/system";
 import { QuoteBenchMark } from "./ui/brand";
 import WorkspaceErrorBoundary from "./workspace-error-boundary";
-import { formatMoney as formatMarketMoney, localeForCurrency, type MarketCode, type SupportedLocale } from "../lib/market";
+import { formatDate, formatMoney as formatMarketMoney, localeForCurrency, type MarketCode, type SupportedLocale } from "../lib/market";
 import { defaultTaxConfiguration, type WorkspaceTaxConfiguration } from "../lib/tax";
 
 const ProposalEditor = lazy(() => import("./proposal-editor"));
 const TemplatesScreen = lazy(() => import("./templates-screen"));
 
 const CURRENT_DAY = new Date().toISOString().slice(0, 10);
+
+function dateInDays(days: number) {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function initialsFor(value: string) {
+  return value.trim().split(/\s+/).filter(Boolean).map((part) => part[0]).join("").slice(0, 4).toUpperCase() || "QB";
+}
 
 export type Screen = "overview" | "builder" | "quotes" | "clients" | "catalogue" | "rules" | "activity" | "integrations" | "team" | "usage" | "documents" | "delivery" | "templates" | "billing" | "governance" | "engagement" | "ai" | "market";
 type Workspace = { id:string; name:string; currency:string; role:"owner"|"admin"|"quoter"; market:MarketCode; countryCode:MarketCode; locale:SupportedLocale; timezone:string; taxRegistrationStatus:"registered"|"not_registered"|"pending"; pricesIncludeTax:boolean; taxConfiguration:WorkspaceTaxConfiguration };
@@ -304,25 +315,25 @@ function OverviewScreen({ currentUser, workspace, quotes, events, clients, entit
   </div>;
 }
 
-function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalogueCategories, proposalTypes, ruleSet, onSaved, onRevised, initialStep = "client" }: { reference: string; initialQuote: EditableQuote | null; clients: ClientRecord[]; catalogueItems: CatalogueItem[]; catalogueCategories:ServiceCategory[]; proposalTypes:ProposalType[]; ruleSet: RuleSet; onSaved: () => void; onRevised: (quote: EditableQuote) => void; initialStep?: BuilderStep }) {
+function QuoteBuilder({ reference, initialQuote, workspace, clients, catalogueItems, catalogueCategories, proposalTypes, ruleSet, onSaved, onRevised, initialStep = "client" }: { reference: string; initialQuote: EditableQuote | null; workspace:Workspace|null; clients: ClientRecord[]; catalogueItems: CatalogueItem[]; catalogueCategories:ServiceCategory[]; proposalTypes:ProposalType[]; ruleSet: RuleSet; onSaved: () => void; onRevised: (quote: EditableQuote) => void; initialStep?: BuilderStep }) {
   const [clientId, setClientId] = useState(initialQuote?.clientId ?? "");
-  const [clientName, setClientName] = useState(initialQuote?.clientName ?? "Stellar Grid Ltd");
-  const [contactName, setContactName] = useState(initialQuote?.contactName ?? "Maya Patel");
-  const [contactEmail, setContactEmail] = useState(initialQuote?.contactEmail ?? "maya.patel@stellargrid.example");
-  const [validUntil, setValidUntil] = useState(initialQuote?.validUntil ?? "2026-09-14");
-  const [quoteCurrency,setQuoteCurrency]=useState(initialQuote?.currency??"GBP");
-  const [regionCode,setRegionCode]=useState(initialQuote?.answers.regionCode??"GLOBAL");
+  const [clientName, setClientName] = useState(initialQuote?.clientName ?? "");
+  const [contactName, setContactName] = useState(initialQuote?.contactName ?? "");
+  const [contactEmail, setContactEmail] = useState(initialQuote?.contactEmail ?? "");
+  const [validUntil, setValidUntil] = useState(initialQuote?.validUntil ?? dateInDays(30));
+  const [quoteCurrency,setQuoteCurrency]=useState(initialQuote?.currency??workspace?.currency??"GBP");
+  const [regionCode,setRegionCode]=useState(initialQuote?.answers.regionCode??workspace?.countryCode??"GB");
   const [asOfDate,setAsOfDate]=useState(initialQuote?.answers.asOfDate??new Date().toISOString().slice(0,10));
-  const [proposalTitle, setProposalTitle] = useState(initialQuote?.document.title ?? "Transformation delivery partnership");
-  const [proposalIntroduction] = useState(initialQuote?.document.introduction ?? "This proposal combines focused strategy, delivery capacity and an ongoing advisory relationship. Every commercial value is derived from the published QuoteBench rule set and recorded with its calculation trace.");
-  const [scopeHeading] = useState(initialQuote?.document.scopeHeading ?? "A practical route to measurable change");
-  const [brandName, setBrandName] = useState(initialQuote?.document.brandName ?? "Finance Advisory Partners");
-  const [brandInitials, setBrandInitials] = useState(initialQuote?.document.brandInitials ?? "FAP");
+  const [proposalTitle, setProposalTitle] = useState(initialQuote?.document.title ?? "Commercial proposal");
+  const [proposalIntroduction] = useState(initialQuote?.document.introduction ?? "This proposal sets out the agreed scope, pricing and commercial terms.");
+  const [scopeHeading] = useState(initialQuote?.document.scopeHeading ?? "Scope and investment");
+  const [brandName, setBrandName] = useState(initialQuote?.document.brandName ?? workspace?.name ?? "");
+  const [brandInitials, setBrandInitials] = useState(initialQuote?.document.brandInitials ?? initialsFor(workspace?.name ?? "QuoteBench"));
   const [proposalTypeId,setProposalTypeId]=useState(initialQuote?.document.proposalTypeId??proposalTypes.find(type=>type.active)?.id??"");
   const [selectedTemplateId,setSelectedTemplateId]=useState(initialQuote?.document.templateId??"");
   const [deposit, setDeposit] = useState(String((initialQuote?.document.depositMinor ?? 0) / 100));
   const [proposalOptions, setProposalOptions] = useState<Array<{ id: string; label: string }>>(initialQuote?.document.options ?? []);
-  const [proposalPages,setProposalPages]=useState<DocumentPage[]>(initialQuote?.document.pages??[{id:crypto.randomUUID(),title:"Overview and investment",format:"standard",background:"plain",blocks:[{id:crypto.randomUUID(),type:"text",eyebrow:"Overview",title:"Our proposal",content:initialQuote?.document.introduction??"Describe the client context, desired outcomes and the value of the proposed approach.",enabled:true},{id:crypto.randomUUID(),type:"feature_grid",title:"What is included",layout:"cards",columns:3,enabled:true,items:[{id:crypto.randomUUID(),title:"Outcome",content:"Describe a measurable outcome."},{id:crypto.randomUUID(),title:"Approach",content:"Explain how the work will be delivered."},{id:crypto.randomUUID(),title:"Confidence",content:"Add proof, governance or assurance."}]},{id:crypto.randomUUID(),type:"pricing_table",title:"Scope and investment",display:"full",locked:true,enabled:true},{id:crypto.randomUUID(),type:"terms",title:"Commercial terms",content:"This proposal is valid until the stated expiry date. Fees exclude VAT unless specified.",locked:true,enabled:true},{id:crypto.randomUUID(),type:"signature",title:"Acceptance",content:"The recipient can formally accept or decline this proposal.",locked:true,enabled:true}]}]);
+  const [proposalPages,setProposalPages]=useState<DocumentPage[]>(initialQuote?.document.pages??[{id:crypto.randomUUID(),title:"Overview and investment",format:"standard",background:"plain",blocks:[{id:crypto.randomUUID(),type:"text",eyebrow:"Overview",title:"Our proposal",content:initialQuote?.document.introduction??"Describe the client context, desired outcomes and the value of the proposed approach.",enabled:true},{id:crypto.randomUUID(),type:"feature_grid",title:"What is included",layout:"cards",columns:3,enabled:true,items:[{id:crypto.randomUUID(),title:"Outcome",content:"Describe a measurable outcome."},{id:crypto.randomUUID(),title:"Approach",content:"Explain how the work will be delivered."},{id:crypto.randomUUID(),title:"Confidence",content:"Add proof, governance or assurance."}]},{id:crypto.randomUUID(),type:"pricing_table",title:"Scope and investment",display:"full",locked:true,enabled:true},{id:crypto.randomUUID(),type:"terms",title:"Commercial terms",content:workspace?.market==="US"?"This proposal is valid until the stated expiry date. Applicable taxes are calculated according to the configured jurisdiction.":"This proposal is valid until the stated expiry date. Fees exclude VAT unless specified.",locked:true,enabled:true},{id:crypto.randomUUID(),type:"signature",title:"Acceptance",content:"The recipient can formally accept or decline this proposal.",locked:true,enabled:true}]}]);
   const [lines, setLines] = useState<SelectedLine[]>(()=>initialQuote?initialQuote.lines:catalogueItems.filter(item=>item.defaultProposalTypeIds?.includes(proposalTypes.find(type=>type.active)?.id??"")).map(item=>({itemId:item.id,quantity:item.minQuantity??1,discount:0})));
   const [answers, setAnswers] = useState<Record<string, string>>(() => initialQuote?.answers.values ?? {
     complexity: initialQuote?.answers.complexity ?? "standard",
@@ -357,10 +368,10 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
     contactEmail,
     quoteReference: reference,
     proposalTitle,
-    validUntil: validUntil ? new Date(`${validUntil}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "",
+    validUntil: validUntil ? formatDate(validUntil, workspace?.locale ?? localeForCurrency(quoteCurrency), workspace?.timezone ?? "UTC") : "",
     currency: quoteCurrency,
     brandName,
-  }), [brandName, clientName, contactEmail, contactName, proposalTitle, quoteCurrency, reference, validUntil]);
+  }), [brandName, clientName, contactEmail, contactName, proposalTitle, quoteCurrency, reference, validUntil, workspace]);
 
   useEffect(() => {
     if (preview) window.scrollTo({ top: 0, behavior: "auto" });
@@ -664,7 +675,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
           <div className="title-row"><h1>Build quote</h1><Status>{lifecycleStatus}</Status>{hasSaved && <span className={`autosave-state autosave-${autosaveState}`}>{autosaveState === "saving" ? "Saving changesâ€¦" : autosaveState === "failed" ? "Autosave failed" : "All changes saved"}</span>}</div>
         </div>
         <div className="heading-actions">
-          <button className="button secondary" onClick={() => saveQuote("Draft")} disabled={saving !== null || !["Draft", "Ready"].includes(lifecycleStatus)}>{saving === "Draft" ? "Savingâ€¦" : "Save draft"}</button>
+          <button className="button secondary" onClick={() => saveQuote("Draft")} disabled={saving !== null || !reviewReadiness[0].complete || !["Draft", "Ready"].includes(lifecycleStatus)} title={reviewReadiness[0].complete?"Save this quote draft":"Add the required client and recipient details before saving"}>{saving === "Draft" ? "Savingâ€¦" : "Save draft"}</button>
           <button className="button primary" onClick={() => setBuilderStep("governance")}>Review and issue</button>
           {hasSaved && <button className="button secondary" onClick={duplicateCurrentQuote} disabled={duplicating}>{duplicating ? "Duplicatingâ€¦" : "Duplicate as draft"}</button>}
           {locked && lifecycleStatus !== "Accepted" && <button className="button primary" onClick={createRevision} disabled={revising}>{revising ? "Creatingâ€¦" : "Create revision"}</button>}
@@ -686,7 +697,7 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
             <div className="section-content">
               <div className="section-title-row">
                 <div><h2>Client and validity</h2><p>Identify the recipient and the commercial window.</p></div>
-                <span className="complete-mark">Complete</span>
+                <span className={`complete-mark ${reviewReadiness[0].complete ? "" : "required"}`}>{reviewReadiness[0].complete ? "Complete" : "Required"}</span>
               </div>
               <div className="field-grid">
                 <label><span>Saved client</span><select value={clientId} onChange={(event) => { const nextId = event.target.value; setClientId(nextId); const client = clients.find((entry) => entry.id === nextId); if (client) { setClientName(client.name); setContactName(client.contactName); setContactEmail(client.contactEmail); } }}><option value="">Create from quote</option>{clients.filter((client) => client.status === "Active").map((client) => <option key={client.id} value={client.id}>{client.name} Â· {client.contactName}</option>)}</select></label>
@@ -702,8 +713,8 @@ function QuoteBuilder({ reference, initialQuote, clients, catalogueItems, catalo
           </section>
 
           <footer className="commercial-step-footer">
-            <div><strong>Recipient details complete</strong><p>Continue to configure the service scope and pricing context.</p></div>
-            <button className="button primary" onClick={() => setBuilderStep("services")}>Continue to services â†’</button>
+            <div><strong>{reviewReadiness[0].complete ? "Recipient details complete" : "Complete the recipient details"}</strong><p>{reviewReadiness[0].complete ? "Continue to configure the service scope and pricing context." : "Add a named client, valid contact email and current validity date to continue."}</p></div>
+            <button className="button primary" disabled={!reviewReadiness[0].complete} onClick={() => setBuilderStep("services")}>Continue to services â†’</button>
           </footer>
           </>}
 
@@ -1178,7 +1189,18 @@ function RulesScreen({ published, draft, catalogueItems, onChanged }: { publishe
   );
 }
 
-function ActivityScreen({ events }: { events: SavedEvent[] }) {
+function formatDuration(valueMs: number) {
+  const seconds = Math.max(0, Math.round(valueMs / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  return seconds % 60 ? `${minutes}m ${seconds % 60}s` : `${minutes}m`;
+}
+
+function ActivityScreen({ events, workspace, onOpen }: { events: SavedEvent[]; workspace:Workspace|null; onOpen:(reference:string)=>void }) {
+  const [insights,setInsights]=useState<ActivityInsights|null>(null);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState<string|null>(null);
+  const [selectedEvent,setSelectedEvent]=useState<SavedEvent|null>(null);
   const eventLabels: Record<SavedEvent["eventType"], string> = {
     "quote.saved": "Draft saved",
     "quote.ready": "Quote marked ready",
@@ -1189,18 +1211,31 @@ function ActivityScreen({ events }: { events: SavedEvent[] }) {
     "quote.expired": "Proposal expired",
     "quote.superseded": "Quote superseded",
   };
+  useEffect(()=>{const controller=new AbortController();fetch("/api/activity",{cache:"no-store",signal:controller.signal}).then(async response=>{const payload=await response.json() as ActivityInsights&{error?:string};if(!response.ok)throw new Error(payload.error??"Activity could not be loaded.");setInsights(payload);setError(null);}).catch(cause=>{if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:"Activity could not be loaded.");}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});return()=>controller.abort();},[events]);
+  const maximum=Math.max(1,...(insights?.days.map(day=>day.recipients+day.opens)??[1]));
+  const attention=insights?.attention[0]??null;
+  const locale=workspace?.locale??"en-GB";
+  const timezone=workspace?.timezone??"Europe/London";
   return (
     <div className="standard-page">
-      <div className="page-heading"><div><p className="eyebrow">Recipient engagement</p><h1>Quote activity</h1><p className="page-subtitle">Qualified views exclude scanners, datacentre traffic and visits under three seconds.</p></div><a className="button secondary export-link" href="/api/export">Export workspace data</a></div>
-      <div className="activity-layout"><section className="activity-hero"><p>Live quote engagement</p><h2>7 recipients are reviewing proposals</h2><div className="activity-bars"><span style={{ height: "22%" }} /><span style={{ height: "38%" }} /><span style={{ height: "31%" }} /><span style={{ height: "58%" }} /><span style={{ height: "47%" }} /><span style={{ height: "80%" }} /><span style={{ height: "68%" }} /><span style={{ height: "92%" }} /><span style={{ height: "75%" }} /><span style={{ height: "62%" }} /><span style={{ height: "86%" }} /><span style={{ height: "72%" }} /></div><div className="activity-axis"><span>4 Aug</span><span>15 Aug</span></div></section><section className="attention-panel"><p className="eyebrow">Attention signal</p><h2>Northstar Analytics</h2><p>Viewed QB-1048 three times. 4m 42s spent on pricing.</p><div><span>Introduction</span><b>1m 06s</b></div><div><span>Scope</span><b>2m 18s</b></div><div className="pricing-attention"><span>Pricing</span><b>4m 42s</b></div><button>Open activity detail â†’</button></section></div>
-      <section className="data-panel timeline"><div className="panel-toolbar"><div><h2>Recent signals</h2><p>Durable audit events from this workspace</p></div></div>{events.map((event) => <div key={event.id}><span className={`timeline-mark ${event.eventType.split(".")[1]}`}>{event.eventType.split(".")[1].charAt(0).toUpperCase()}</span><p><strong>{eventLabels[event.eventType]} Â· {event.quoteReference}</strong><small>{event.actorEmail} Â· {readableDate(event.createdAt)}</small></p><button>Audit record</button></div>)}{events.length===0&&<div className="empty-state"><strong>No activity yet</strong><p>Saved, issued, viewed and accepted quote events will appear here.</p></div>}</section>
+      <div className="page-heading activity-heading"><div><p className="eyebrow">Recipient intelligence</p><h1>Commercial activity</h1><p className="page-subtitle">See where buyers are engaging, then move directly from signal to action. Qualified views exclude scanners and low-confidence traffic.</p></div><a className="button secondary export-link" href="/api/export">Export evidence</a></div>
+      {error&&<div className="notice error" role="alert"><span>!</span>{error}<button onClick={()=>setError(null)}>Ã—</button></div>}
+      <section className="activity-metric-strip" aria-label="Engagement summary">
+        <article><span>Reviewing now</span><strong>{loading?"â€”":insights?.activeRecipients??0}</strong><small>Active recipients, last 7 days</small></article>
+        <article><span>Engaged recipients</span><strong>{loading?"â€”":insights?.engagedRecipients??0}</strong><small>Unique recipients, last 14 days</small></article>
+        <article><span>Proposal opens</span><strong>{loading?"â€”":insights?.totalOpens??0}</strong><small>Qualified open events</small></article>
+        <article><span>Attention time</span><strong>{loading?"â€”":formatDuration(insights?.totalDwellMs??0)}</strong><small>Recorded section dwell</small></article>
+      </section>
+      <div className="activity-layout"><section className="activity-hero"><div className="activity-hero-copy"><div><p>Engagement pulse</p><h2>{loading?"Loading buyer signalsâ€¦":insights?.engagedRecipients?`${insights.engagedRecipients} recipient${insights.engagedRecipients===1?" is":"s are"} engaging with proposals`:"No recipient engagement yet"}</h2></div><span>Rolling 14-day qualified activity</span></div><div className="activity-bars" aria-label="Daily recipient and open activity">{(insights?.days??Array.from({length:14},(_,index)=>({date:String(index),recipients:0,opens:0,dwellMs:0}))).map(day=><span key={day.date} style={{height:loading?"8%":`${Math.max(day.recipients+day.opens?8:2,((day.recipients+day.opens)/maximum)*100)}%`}} title={`${day.date}: ${day.recipients} recipients, ${day.opens} opens`}/>)}</div><div className="activity-axis"><span>{insights?.days[0]?formatDate(insights.days[0].date,locale,timezone,{day:"numeric",month:"short"}):"14 days ago"}</span><span>Today</span></div></section><section className="attention-panel">{attention?<><div className="attention-kicker"><p className="eyebrow">Highest attention</p><span>{formatDuration(attention.dwellMs)}</span></div><h2>{attention.clientName}</h2><p>{attention.recipients} engaged recipient{attention.recipients===1?"":"s"} Â· {attention.openCount} qualified open{attention.openCount===1?"":"s"} Â· {attention.quoteReference}</p><div className="attention-sections">{attention.sections.slice(0,3).map((section,index)=><div className={index===0?"pricing-attention":""} key={section.section}><span>{section.section.replaceAll("_"," ")}</span><b>{formatDuration(section.dwellMs)}</b></div>)}</div><button onClick={()=>onOpen(attention.quoteReference)}>Open quote and act â†’</button></>:<div className="attention-empty"><span>â—Ž</span><h2>Signals will surface here</h2><p>Issue a proposal from Send and track. The strongest buyer attention will appear automatically.</p></div>}</section></div>
+      <section className="data-panel timeline"><div className="panel-toolbar"><div><h2>Commercial timeline</h2><p>Durable workspace events with inspectable evidence</p></div><span className="status">{events.length} record{events.length===1?"":"s"}</span></div>{events.map((event) => <div key={event.id}><span className={`timeline-mark ${event.eventType.split(".")[1]}`}>{event.eventType.split(".")[1].charAt(0).toUpperCase()}</span><p><strong>{eventLabels[event.eventType]} Â· {event.quoteReference}</strong><small>{event.actorEmail} Â· {formatDate(event.createdAt,locale,timezone,{dateStyle:"medium",timeStyle:"short"})}</small></p><button onClick={()=>setSelectedEvent(event)}>Inspect evidence</button></div>)}{events.length===0&&<div className="empty-state"><strong>No commercial events yet</strong><p>Saved, issued, viewed and accepted quote events will appear here with their audit evidence.</p></div>}</section>
+      {selectedEvent&&<UtilityLayer title={`${eventLabels[selectedEvent.eventType]} Â· ${selectedEvent.quoteReference}`} eyebrow="Audit evidence" onClose={()=>setSelectedEvent(null)}><div className="audit-evidence"><dl><div><dt>Event</dt><dd>{selectedEvent.eventType}</dd></div><div><dt>Actor</dt><dd>{selectedEvent.actorEmail}</dd></div><div><dt>Recorded</dt><dd>{formatDate(selectedEvent.createdAt,locale,timezone,{dateStyle:"full",timeStyle:"long"})}</dd></div><div><dt>Quote</dt><dd>{selectedEvent.quoteReference}</dd></div></dl><section><h3>Recorded attributes</h3>{Object.keys(selectedEvent.payload??{}).length?Object.entries(selectedEvent.payload).map(([key,value])=><div key={key}><span>{key.replaceAll("_"," ")}</span><strong>{typeof value==="object"?JSON.stringify(value):String(value)}</strong></div>):<p>No additional attributes were recorded for this event.</p>}</section><button className="button primary" onClick={()=>{setSelectedEvent(null);onOpen(selectedEvent.quoteReference);}}>Open quote</button></div></UtilityLayer>}
     </div>
   );
 }
 
 export default function QuoteBench({ currentUser, operatorAccess = false, initialScreen = "overview", initialBuilderStep = "client" }: { currentUser: QuoteBenchUser | null; operatorAccess?: boolean; initialScreen?: Screen; initialBuilderStep?: BuilderStep }) {
   const [screen, setScreen] = useState<Screen>(initialScreen);
-  const [activeReference, setActiveReference] = useState("QB-1049");
+  const [activeReference, setActiveReference] = useState("QB-1000");
   const [activeQuote, setActiveQuote] = useState<EditableQuote | null>(null);
   const [savedQuotes, setSavedQuotes] = useState<SavedQuote[]>([]);
   const [savedEvents, setSavedEvents] = useState<SavedEvent[]>([]);
@@ -1228,8 +1263,8 @@ export default function QuoteBench({ currentUser, operatorAccess = false, initia
   }, [screen]);
 
   function startNewQuote() {
-    const references = [activeReference, ...seedQuotes.map((quote) => quote.reference), ...savedQuotes.map((quote) => quote.reference)];
-    const nextNumber = Math.max(1048, ...references.map((reference) => Number(reference.match(/\d+$/)?.[0] ?? 0))) + 1;
+    const references = [activeReference, ...savedQuotes.map((quote) => quote.reference)];
+    const nextNumber = Math.max(1000, ...references.map((reference) => Number(reference.match(/\d+$/)?.[0] ?? 0))) + 1;
     setActiveReference(`QB-${nextNumber}`);
     setActiveQuote(null);
     setScreen("builder");
@@ -1340,12 +1375,12 @@ export default function QuoteBench({ currentUser, operatorAccess = false, initia
         <Topbar screen={screen} workspace={workspace} workspaces={workspaces.length?workspaces:workspace?[workspace]:[]} onOpenNavigation={()=>setMobileNavigationOpen(true)} onSearch={()=>setUtility("search")} onNotifications={openNotifications} onHelp={()=>setUtility("help")} notificationCount={Math.min(99,notifications.filter(event=>!event.readAt).length)} />
         <main className="main-content">
           {screen === "overview" && <OverviewScreen currentUser={currentUser} workspace={workspace} quotes={savedQuotes} events={savedEvents} clients={clients} entitlement={entitlement} catalogueItems={workspaceCatalogue} ruleSet={activeRuleSet} loading={quotesLoading} onCreate={startNewQuote} onOpen={openQuote} onNavigate={setScreen} />}
-          {screen === "builder" && <QuoteBuilder key={activeReference} reference={activeReference} initialQuote={activeQuote} clients={clients} catalogueItems={workspaceCatalogue} catalogueCategories={catalogueCategories} proposalTypes={proposalTypes} ruleSet={activeRuleSet} onSaved={refreshQuotes} onRevised={openRevision} initialStep={initialBuilderStep} />}
+          {screen === "builder" && <QuoteBuilder key={`${activeReference}:${workspace?.id??"loading"}`} reference={activeReference} initialQuote={activeQuote} workspace={workspace} clients={clients} catalogueItems={workspaceCatalogue} catalogueCategories={catalogueCategories} proposalTypes={proposalTypes} ruleSet={activeRuleSet} onSaved={refreshQuotes} onRevised={openRevision} initialStep={initialBuilderStep} />}
           {screen === "quotes" && <QuotesScreen onCreate={startNewQuote} onOpen={openQuote} savedQuotes={savedQuotes} loading={quotesLoading} storageMessage={storageMessage} />}
           {screen === "clients" && <ClientsScreen clients={clients} onSaved={(client) => setClients((current) => [...current.filter((entry) => entry.id !== client.id), client].sort((a, b) => a.name.localeCompare(b.name)))} />}
           {screen === "catalogue" && <CatalogueScreen catalogueItems={workspaceCatalogue} categories={catalogueCategories} proposalTypes={proposalTypes} onRefresh={refreshQuotes} />}
           {screen === "rules" && <RulesScreen published={activeRuleSet} draft={draftRuleSet} catalogueItems={workspaceCatalogue} onChanged={(published, draft) => { setActiveRuleSet(published); setDraftRuleSet(draft); }} />}
-          {screen === "activity" && <ActivityScreen events={savedEvents} />}
+          {screen === "activity" && <ActivityScreen events={savedEvents} workspace={workspace} onOpen={openQuote} />}
           {screen === "integrations" && <IntegrationsScreen onImported={refreshQuotes} />}
           {screen === "team" && <TeamScreen />}
           {screen === "usage" && <UsageScreen />}
