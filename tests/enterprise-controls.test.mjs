@@ -54,6 +54,17 @@ test("E3/E6 deployment responses apply baseline browser security headers", async
   for (const header of ["strict-transport-security", "content-security-policy", "x-content-type-options", "referrer-policy", "permissions-policy", "x-request-id"]) assert.match(worker, new RegExp(header));
 });
 
+test("Public authentication is sign-in only until commercial onboarding is enabled", async () => {
+  const form = await source("app/auth/sign-in/auth-form.tsx");
+  const proxy = await source("app/api/auth/[...path]/route.ts");
+  assert.match(form, /signIn\.email/);
+  assert.match(form, /New accounts are currently provisioned directly by QuoteBench/);
+  assert.doesNotMatch(form, /signUp\.email|Create account|Create secure account/);
+  assert.match(proxy, /path\[0\] === "sign-up"/);
+  assert.match(proxy, /Self-registration is currently disabled/);
+  assert.match(proxy, /status: 403/);
+});
+
 test("E6 privacy controls include tracking choice, DSAR export and delayed purge", async () => {
   const governance = await source("app/api/governance/route.ts");
   const delivery = await source("db/delivery-store.ts");
@@ -455,4 +466,3 @@ test("Operator customer records expose governed profile, user, support and secur
   assert.match(styles, /@media \(max-width: 1180px\)[\s\S]*\.operator-users-layout \{ grid-template-columns:1fr; \}/);
   assert.match(styles, /@media \(max-width: 780px\)[\s\S]*\.operator-profile-grid/);
 });
-
