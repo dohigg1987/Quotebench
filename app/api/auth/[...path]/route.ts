@@ -11,12 +11,23 @@ function unavailable(): Response {
   );
 }
 
+async function isSelfRegistration(context: RouteContext) {
+  const { path } = await context.params;
+  return path[0] === "sign-up";
+}
+
 export async function GET(request: Request, context: RouteContext) {
   const auth = await getAuth();
   return auth ? auth.handler().GET(request, context) : unavailable();
 }
 
 export async function POST(request: Request, context: RouteContext) {
+  if (await isSelfRegistration(context)) {
+    return Response.json(
+      { error: "Self-registration is currently disabled." },
+      { status: 403, headers: { "cache-control": "no-store" } },
+    );
+  }
   const auth = await getAuth();
   return auth ? auth.handler().POST(request, context) : unavailable();
 }
