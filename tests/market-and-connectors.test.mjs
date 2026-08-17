@@ -10,7 +10,7 @@ test("UK and US market profiles fail closed to supported currency and locale pai
 });
 
 test("regional formatting presents the same minor units correctly in both key markets",()=>{
-  assert.equal(formatMoney(123456,"GBP","en-GB"),"Â£1,234.56");
+  assert.equal(formatMoney(123456,"GBP","en-GB"),"\u00a31,234.56");
   assert.equal(formatMoney(123456,"USD","en-US"),"$1,234.56");
   assert.equal(formatDate("2026-08-17","en-GB","Europe/London"),"17 August 2026");
   assert.equal(formatDate("2026-08-17","en-US","America/New_York"),"August 17, 2026");
@@ -44,4 +44,3 @@ test("every managed connector uses an HTTPS OAuth endpoint and signed-state slot
     assert.equal(authorise.searchParams.get("redirect_uri"),redirect);
   }
 });
-
