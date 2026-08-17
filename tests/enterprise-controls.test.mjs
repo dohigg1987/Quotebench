@@ -187,8 +187,8 @@ test("Advanced CPQ, engagement governance, ordered e-signature and BYO AI are in
 test("Enterprise shell groups navigation and contains the quote layout responsively", async () => {
   const quoteBench = await source("app/quote-bench.tsx");
   const css = await source("app/globals.css");
-  for (const group of ["Commercial", "Commercial foundation", "Operations", "Workspace"]) assert.match(quoteBench, new RegExp(group));
-  assert.match(quoteBench, /aria-expanded/);
+  for (const group of ["Commercial", "Configuration", "Operations", "Administration"]) assert.match(quoteBench, new RegExp(group));
+  assert.match(quoteBench, /aria-current/);
   assert.match(quoteBench, /navigation-backdrop/);
   assert.match(css, /grid-template-columns:minmax\(0,1fr\) minmax\(300px,340px\)/);
   assert.match(css, /@media \(max-width: 1320px\)[\s\S]*\.builder-grid \{ grid-template-columns:1fr; \}/);
@@ -201,7 +201,7 @@ test("Commercial workspace opens on a data-led overview", async () => {
   const quoteBench = await source("app/quote-bench.tsx");
   const page = await source("app/page.tsx");
   const layout = await source("app/layout.tsx");
-  for (const capability of ["OverviewScreen", "Active pipeline", "Decision rate", "Quote progression", "Workspace readiness", "Recent activity"]) {
+  for (const capability of ["OverviewScreen", "Active pipeline value", "Decision rate", "Quote progression", "Workspace checklist", "Recent activity"]) {
     assert.match(quoteBench, new RegExp(capability));
   }
   assert.match(quoteBench, /if \(screen === "overview"\) url\.searchParams\.delete\("screen"\)/);
@@ -503,4 +503,3 @@ test("Owner command centre unifies platform, customer, plan, Stripe and operatio
   assert.match(styles, /\.command-health-grid/);
   assert.match(styles, /@media \(max-width: 850px\)[\s\S]*\.command-two-column/);
 });
-
