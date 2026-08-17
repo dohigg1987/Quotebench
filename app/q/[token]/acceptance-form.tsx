@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { formatMoney, localeForCurrency } from "../../../lib/market";
 
 type ProposalStatus = "Issued" | "Viewed" | "Accepted" | "Declined" | "Expired" | "Superseded";
 
@@ -56,14 +57,14 @@ export default function AcceptanceForm({ token, status, acceptedBy, declineReaso
   }
 
   if (accepted) {
-    return <div className="acceptance-confirmed"><span>✓</span><div><strong>Proposal accepted</strong><p>{message}. A timestamped evidence record has been retained.</p><a className="button" href={`/api/public/quotes/${token}/certificate`}>Download acceptance certificate</a></div></div>;
+    return <div className="acceptance-confirmed"><span>âœ“</span><div><strong>Proposal accepted</strong><p>{message}. A timestamped evidence record has been retained.</p><a className="button" href={`/api/public/quotes/${token}/certificate`}>Download acceptance certificate</a></div></div>;
   }
 
-  if (signaturePending) return <div className="acceptance-confirmed"><span>✓</span><div><strong>Signature recorded</strong><p>{message || `Your ${recipientRole} signature at order ${signingOrder} is complete. The proposal remains open for the remaining required signatories.`}</p></div></div>;
+  if (signaturePending) return <div className="acceptance-confirmed"><span>âœ“</span><div><strong>Signature recorded</strong><p>{message || `Your ${recipientRole} signature at order ${signingOrder} is complete. The proposal remains open for the remaining required signatories.`}</p></div></div>;
 
 
   if (declined) {
-    return <div className="acceptance-confirmed declined-confirmed"><span>×</span><div><strong>Proposal declined</strong><p>{message}. The sender can reopen this as a new version.</p></div></div>;
+    return <div className="acceptance-confirmed declined-confirmed"><span>Ã—</span><div><strong>Proposal declined</strong><p>{message}. The sender can reopen this as a new version.</p></div></div>;
   }
 
   if (status === "Expired") {
@@ -77,12 +78,13 @@ export default function AcceptanceForm({ token, status, acceptedBy, declineReaso
   return (
     <div className="acceptance-form">
       {options.length > 0 && <fieldset className="acceptance-options"><legend>Select one option</legend>{options.map((option) => <label key={option.id}><input type="radio" name="proposal-option" checked={selectedOptionId === option.id} onChange={() => setSelectedOptionId(option.id)} /><span>{option.label}</span></label>)}</fieldset>}
-      {depositMinor > 0 && <div className="deposit-note"><span>Deposit stated in proposal</span><strong>{new Intl.NumberFormat("en-GB", { style: "currency", currency }).format(depositMinor / 100)}</strong><small>No payment is collected on this page.</small></div>}
+      {depositMinor > 0 && <div className="deposit-note"><span>Deposit stated in proposal</span><strong>{formatMoney(depositMinor,currency,localeForCurrency(currency))}</strong><small>No payment is collected on this page.</small></div>}
       <label><span>Full name</span><input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" /></label>
       <label className="consent-row"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span>I accept this proposal and confirm that I am authorised to proceed.</span></label>
       {message && <p className="acceptance-error" role="alert">{message}</p>}
-      <button onClick={submit} disabled={submitting || !consent || name.trim().length < 2 || (options.length > 0 && !selectedOptionId)}>{submitting ? "Recording…" : recipientRole === "countersignatory" ? "Countersign proposal" : "Sign and accept"}</button>
+      <button onClick={submit} disabled={submitting || !consent || name.trim().length < 2 || (options.length > 0 && !selectedOptionId)}>{submitting ? "Recordingâ€¦" : recipientRole === "countersignatory" ? "Countersign proposal" : "Sign and accept"}</button>
       <div className="decline-control"><label><span>Decline reason</span><select value={reason} onChange={(event) => setReason(event.target.value)}><option>Budget</option><option>Timing</option><option>Scope</option><option>Alternative provider</option><option>No longer required</option></select></label><button className="decline-button" onClick={decline} disabled={submitting}>Decline proposal</button></div>
     </div>
   );
 }
+

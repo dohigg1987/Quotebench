@@ -8,6 +8,7 @@ import type { PricedQuote } from "../packages/pricing-engine/src/index";
 import type { BlockType, DocumentBlock, DocumentPage } from "../db/document-store";
 import { governedTypes, proposalPageToPuckData, puckDataToProposalBlocks } from "../lib/proposal-puck-data";
 import { resolveProposalText, type ProposalMetadata } from "../lib/proposal-metadata";
+import { formatMoney as formatMarketMoney, localeForCurrency } from "../lib/market";
 
 type ProposalPuckProps = {
   page: DocumentPage;
@@ -52,7 +53,7 @@ function commonBlock(type: BlockType): DocumentBlock {
   return { ...common, title: type === "heading" ? "A clear section heading" : type === "callout" ? "Key outcome" : type === "options" ? "Proposal options" : type === "video" ? "Video introduction" : type === "image" ? "Visual" : "Narrative", content: "Add content for this block." };
 }
 
-function formatMoney(minor: number, currency: string) { return new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 0 }).format(minor / 100); }
+function formatMoney(minor: number, currency: string) { return formatMarketMoney(minor,currency,localeForCurrency(currency)); }
 function renderPuckValue(value: unknown, metadata?: ProposalMetadata): ReactNode {
   if (typeof value === "string") return resolveProposalText(value, metadata);
   if (typeof value === "number") return String(value);
@@ -70,7 +71,7 @@ function buildConfig({ pricingPreview, proposalOptions = [], onUploadImage, meta
     layout: { type: "select", label: "Layout", options: [{ label: "Full width", value: "full" }, { label: "Split", value: "split" }, { label: "Cards", value: "cards" }, { label: "Compact", value: "compact" }] },
     alignment: { type: "radio", label: "Alignment", options: [{ label: "Left", value: "left" }, { label: "Centre", value: "center" }] },
   } as const;
-  const narrativeField = { type: "textarea", label: "Content", placeholder: "Write the client-facing content…", contentEditable: true } as const;
+  const narrativeField = { type: "textarea", label: "Content", placeholder: "Write the client-facing contentâ€¦", contentEditable: true } as const;
   const itemsField = { type: "array", label: "Items", min: 1, max: 24, arrayFields: { title: { type: "text", label: "Title" }, content: { type: "textarea", label: "Description" } }, defaultItemProps: () => ({ id: crypto.randomUUID(), title: "New item", content: "Add a concise description." }), getItemSummary: (item: { title?: string }) => item.title || "Untitled item" } as const;
   const defaults = (type: BlockType) => { const { type: _type, id: _id, ...props } = commonBlock(type); void _type; void _id; return props; };
   const component = (type: BlockType, fields: Record<string, unknown>, render: (props: Record<string, unknown>) => ReactNode) => ({ label: blockLabels[type], fields, defaultProps: defaults(type), permissions: governedTypes.has(type) ? { delete: false, duplicate: false } : undefined, render });
@@ -87,7 +88,7 @@ function buildConfig({ pricingPreview, proposalOptions = [], onUploadImage, meta
     }),
     options: component("options", presentationFields, (props) => <BlockFrame props={props} metadata={metadataPreview}><div className="recipient-items">{(proposalOptions.length ? proposalOptions : [{ id: "option", label: "Client acceptance option" }]).map((option) => <div key={option.id}><strong>{option.label}</strong></div>)}</div></BlockFrame>),
     image: component("image", { ...presentationFields, fileId: { type: "custom", label: "Proposal image", render: ({ value, onChange }: { value?: string; onChange: (value: string) => void }) => <label className="qb-puck-upload"><span>{value ? "Replace image" : "Upload PNG, JPEG or WebP"}</span><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file && onUploadImage) void onUploadImage(file).then((id) => id && onChange(id)); }} />{value && <small>Image attached</small>}</label> } }, (props) => <BlockFrame props={props} metadata={metadataPreview}>{props.fileId ? <img className="recipient-media" src={`/api/files/${props.fileId as string}`} alt={accessiblePuckText(props.title, metadataPreview) || "Proposal image"} /> : <div className="qb-puck-media-placeholder"><span>Image</span><p>Choose an image in the properties panel.</p></div>}</BlockFrame>),
-    video: component("video", { ...presentationFields, content: narrativeField, mediaUrl: { type: "text", label: "HTTPS video URL", placeholder: "https://…" } }, (props) => <BlockFrame props={props} metadata={metadataPreview}><div className="qb-puck-video"><span>▶</span><div><strong>{renderPuckValue(props.title, metadataPreview)}</strong><p>{props.mediaUrl ? "Linked video" : "Add a secure video URL in the properties panel."}</p></div></div></BlockFrame>),
+    video: component("video", { ...presentationFields, content: narrativeField, mediaUrl: { type: "text", label: "HTTPS video URL", placeholder: "https://â€¦" } }, (props) => <BlockFrame props={props} metadata={metadataPreview}><div className="qb-puck-video"><span>â–¶</span><div><strong>{renderPuckValue(props.title, metadataPreview)}</strong><p>{props.mediaUrl ? "Linked video" : "Add a secure video URL in the properties panel."}</p></div></div></BlockFrame>),
     testimonial: component("testimonial", { ...presentationFields, content: narrativeField }, (props) => <BlockFrame props={props} metadata={metadataPreview} className="qb-puck-testimonial"><blockquote>{renderPuckValue(props.content, metadataPreview)}</blockquote></BlockFrame>),
     feature_grid: structured("feature_grid", "qb-puck-feature-grid"), timeline: structured("timeline", "qb-puck-timeline"), team: structured("team", "qb-puck-team"), faq: structured("faq", "qb-puck-faq"),
     terms: component("terms", { ...presentationFields, content: narrativeField }, (props) => <BlockFrame props={props} metadata={metadataPreview} className="qb-puck-terms"><span className="qb-governed-badge">Required block</span><p className="qb-puck-copy">{renderPuckValue(props.content, metadataPreview)}</p></BlockFrame>),
@@ -108,3 +109,4 @@ export function ProposalPuck({ page, onChange, onUploadImage, pricingPreview, pr
 }
 
 export { commonBlock };
+

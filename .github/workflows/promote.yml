@@ -141,6 +141,8 @@ jobs:
         env:
           NEON_AUTH_BASE_URL: ${{ secrets.NEON_AUTH_BASE_URL }}
           NEON_AUTH_COOKIE_SECRET: ${{ secrets.NEON_AUTH_COOKIE_SECRET }}
+          COOKIE_ENCRYPTION_KEY: ${{ secrets.NEON_AUTH_COOKIE_SECRET }}
+          INTEGRATION_ENCRYPTION_KEY: ${{ secrets.INTEGRATION_ENCRYPTION_KEY }}
           OPERATOR_EMAIL_SHA256: ${{ secrets.OPERATOR_EMAIL_SHA256 }}
           EMAIL_API_ENDPOINT: ${{ secrets.EMAIL_API_ENDPOINT }}
           EMAIL_API_KEY: ${{ secrets.EMAIL_API_KEY }}
@@ -150,6 +152,14 @@ jobs:
           STRIPE_PRICE_STARTER: ${{ secrets.STRIPE_PRICE_STARTER }}
           STRIPE_PRICE_PROFESSIONAL: ${{ secrets.STRIPE_PRICE_PROFESSIONAL }}
           STRIPE_PRICE_SCALE: ${{ secrets.STRIPE_PRICE_SCALE }}
+          HUBSPOT_CLIENT_ID: ${{ secrets.HUBSPOT_CLIENT_ID }}
+          HUBSPOT_CLIENT_SECRET: ${{ secrets.HUBSPOT_CLIENT_SECRET }}
+          SALESFORCE_CLIENT_ID: ${{ secrets.SALESFORCE_CLIENT_ID }}
+          SALESFORCE_CLIENT_SECRET: ${{ secrets.SALESFORCE_CLIENT_SECRET }}
+          XERO_CLIENT_ID: ${{ secrets.XERO_CLIENT_ID }}
+          XERO_CLIENT_SECRET: ${{ secrets.XERO_CLIENT_SECRET }}
+          QUICKBOOKS_CLIENT_ID: ${{ secrets.QUICKBOOKS_CLIENT_ID }}
+          QUICKBOOKS_CLIENT_SECRET: ${{ secrets.QUICKBOOKS_CLIENT_SECRET }}
         run: echo "path=$(node scripts/write-cloudflare-secrets.mjs)" >> "$GITHUB_OUTPUT"
       - name: Capture current rollback target
         id: previous
@@ -305,3 +315,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "$GOLD_TAG" -m "Production last-known-good ${{ inputs.commit }}"
           git push origin "$GOLD_TAG"
+

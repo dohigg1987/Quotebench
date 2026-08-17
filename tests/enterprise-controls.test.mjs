@@ -202,8 +202,12 @@ test("Commercial workspace opens on a data-led overview", async () => {
 
 test("Search, notifications and help are functional workspace utilities", async () => {
   const quoteBench = await source("app/quote-bench.tsx");
+  const notificationRoute = await source("app/api/notifications/route.ts");
+  const notificationStore = await source("db/notification-store.ts");
   for (const component of ["SearchPalette", "NotificationsPanel", "HelpPanel", "UtilityLayer"]) assert.match(quoteBench, new RegExp(component));
-  for (const action of ["onSearch", "onNotifications", "onHelp", "setNotificationsSeen", "onOpenQuote"]) assert.match(quoteBench, new RegExp(action));
+  for (const action of ["onSearch", "onNotifications", "onHelp", "markNotificationsRead", "onOpenQuote"]) assert.match(quoteBench, new RegExp(action));
+  assert.match(notificationRoute,/markNotificationsRead/);
+  assert.match(notificationStore,/notification_reads/);
   assert.match(quoteBench, /event\.key\.toLowerCase\(\)==="k"/);
   assert.match(quoteBench, /event\.key==="Escape"/);
   assert.match(quoteBench, /aria-modal="true"/);
@@ -451,3 +455,4 @@ test("Operator customer records expose governed profile, user, support and secur
   assert.match(styles, /@media \(max-width: 1180px\)[\s\S]*\.operator-users-layout \{ grid-template-columns:1fr; \}/);
   assert.match(styles, /@media \(max-width: 780px\)[\s\S]*\.operator-profile-grid/);
 });
+

@@ -14,6 +14,7 @@ type PreviewBody = {
   currency?: string;
   regionCode?: string;
   asOfDate?: string;
+  customerTaxExempt?: boolean;
 };
 
 export async function POST(request: Request) {
@@ -37,11 +38,15 @@ export async function POST(request: Request) {
       lines,
       quoteDiscountBp: money.bp(Number(body.quoteDiscount ?? 0) * 100),
       trace: true,
-      regionCode:String(body.regionCode??"GLOBAL").trim().toUpperCase().slice(0,12),
+      regionCode:String(body.regionCode??context.countryCode).trim().toUpperCase().slice(0,12),
       asOfDate:/^\d{4}-\d{2}-\d{2}$/.test(String(body.asOfDate))?String(body.asOfDate):new Date().toISOString().slice(0,10),
+      taxTreatments: context.taxConfiguration.treatments,
+      defaultTaxCode: context.taxConfiguration.defaultTaxCode,
+      customerTaxExempt: body.customerTaxExempt === true,
     });
     return Response.json(result);
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "The quote could not be priced." }, { status: 400 });
   }
 }
+
