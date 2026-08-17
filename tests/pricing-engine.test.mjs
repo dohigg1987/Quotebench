@@ -304,6 +304,120 @@ test("tax-exclusive and tax-inclusive prices produce consistent gross values", (
   }
 });
 
+test("US sales tax records state, county and city components without collapsing the audit trace", () => {
+  const result = priceSingle(
+    { ...workshop, baseCurrency: "USD", taxCode: "US_SALES_TAX" },
+    {
+      currency: "USD",
+      taxTreatments: [{
+        code: "US_SALES_TAX",
+        label: "Configured US sales tax",
+        countryCode: "US",
+        calculation: "exclusive",
+        components: [
+          { id: "state", label: "State", jurisdictionCode: "US-CA", jurisdictionLevel: "state", rateBp: money.bp(725) },
+          { id: "county", label: "County", jurisdictionCode: "US-CA-LA", jurisdictionLevel: "county", rateBp: money.bp(100) },
+          { id: "city", label: "City", jurisdictionCode: "US-CA-LA-LA", jurisdictionLevel: "city", rateBp: money.bp(125) },
+        ],
+      }],
+    },
+  );
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  const line = result.quote.lines[0];
+  assert.equal(line.taxMinor, 4_276);
+  assert.equal(line.grossPriceMinor, 49_276);
+  assert.deepEqual(line.taxComponents.map(({ label, taxMinor }) => [label, taxMinor]), [["State", 3_263], ["County", 450], ["City", 563]]);
+  assert.equal(result.quote.taxOneOffTotalMinor, 4_276);
+});
+
+test("switching an existing catalogue to the US does not reuse a legacy UK percentage",()=>{
+  const result=priceSingle({ ...workshop, baseCurrency:"USD", taxCode:"STANDARD", taxRateBp:money.bp(2_000) },{currency:"USD",defaultTaxCode:"US_OUT_OF_SCOPE",taxTreatments:[{code:"US_OUT_OF_SCOPE",label:"Outside registered jurisdictions",countryCode:"US",calculation:"out_of_scope",components:[]}]});
+  assert.equal(result.ok,true);
+  if(result.ok){assert.equal(result.quote.lines[0].taxMinor,0);assert.equal(result.quote.lines[0].taxCode,"US_OUT_OF_SCOPE");}
+});
+
+test("UK VAT treatments distinguish standard, zero-rated, exempt and out-of-scope supplies", () => {
+  const taxTreatments = [
+    { code: "GB_STANDARD", label: "Standard-rated VAT", countryCode: "GB", calculation: "exclusive", components: [{ id: "vat", label: "UK VAT", jurisdictionCode: "GB", jurisdictionLevel: "country", rateBp: money.bp(2_000) }] },
+    { code: "GB_ZERO", label: "Zero-rated", countryCode: "GB", calculation: "exclusive", components: [{ id: "vat-zero", label: "UK VAT", jurisdictionCode: "GB", jurisdictionLevel: "country", rateBp: money.bp(0) }] },
+    { code: "GB_EXEMPT", label: "VAT exempt", countryCode: "GB", calculation: "exempt", components: [] },
+    { code: "GB_OUT_OF_SCOPE", label: "Outside the scope of VAT", countryCode: "GB", calculation: "out_of_scope", components: [] },
+  ];
+  const standard = priceSingle({ ...workshop, taxCode: "GB_STANDARD" }, { taxTreatments });
+  const zero = priceSingle({ ...workshop, taxCode: "GB_ZERO" }, { taxTreatments });
+  const exempt = priceSingle({ ...workshop, taxCode: "GB_EXEMPT" }, { taxTreatments });
+  const outside = priceSingle({ ...workshop, taxCode: "GB_OUT_OF_SCOPE" }, { taxTreatments });
+  for (const result of [standard, zero, exempt, outside]) assert.equal(result.ok, true);
+  if (standard.ok && zero.ok && exempt.ok && outside.ok) {
+    assert.equal(standard.quote.lines[0].taxMinor, 9_000);
+    assert.equal(zero.quote.lines[0].taxMinor, 0);
+    assert.equal(exempt.quote.lines[0].taxTreatmentLabel, "VAT exempt");
+    assert.equal(outside.quote.lines[0].taxTreatmentLabel, "Outside the scope of VAT");
+  }
+});
+
+test("customer tax exemption overrides a configured taxable treatment", () => {
+  const result = priceSingle(
+    { ...workshop, baseCurrency: "USD", taxCode: "US_SALES_TAX" },
+    {
+      currency: "USD",
+      customerTaxExempt: true,
+      taxTreatments: [{
+        code: "US_SALES_TAX",
+        label: "Configured US sales tax",
+        countryCode: "US",
+        calculation: "exclusive",
+        components: [{ id: "state", label: "State", jurisdictionCode: "US-NY", jurisdictionLevel: "state", rateBp: money.bp(800) }],
+      }],
+    },
+  );
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.quote.lines[0].taxMinor, 0);
+    assert.equal(result.quote.lines[0].taxTreatmentLabel, "Customer exemption");
+  }
+});
+
+test("inclusive multi-component tax allocates the exact tax total deterministically", () => {
+  const result = priceSingle(
+    { ...workshop, baseCurrency: "USD", basePriceMinor: money.minor(110_000), taxCode: "US_INCLUDED" },
+    {
+      currency: "USD",
+      taxTreatments: [{
+        code: "US_INCLUDED",
+        label: "Included US tax",
+        countryCode: "US",
+        calculation: "inclusive",
+        components: [
+          { id: "state", label: "State", jurisdictionCode: "US-X", jurisdictionLevel: "state", rateBp: money.bp(600) },
+          { id: "local", label: "Local", jurisdictionCode: "US-X-Y", jurisdictionLevel: "city", rateBp: money.bp(400) },
+        ],
+      }],
+    },
+  );
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.quote.lines[0].taxMinor, 10_000);
+    assert.equal(result.quote.lines[0].grossPriceMinor, 110_000);
+    assert.equal(result.quote.lines[0].taxComponents.reduce((sum, component) => sum + component.taxMinor, 0), 10_000);
+  }
+});
+
+test("invalid tax treatment components fail closed at the boundary", () => {
+  const result = priceSingle(workshop, {
+    taxTreatments: [{
+      code: "US_BAD",
+      label: "Broken tax",
+      countryCode: "USA",
+      calculation: "exclusive",
+      components: [{ id: "bad", label: "Bad", jurisdictionCode: "", jurisdictionLevel: "state", rateBp: money.bp(-1) }],
+    }],
+  });
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.ok(result.errors.some(error => error.path?.startsWith("taxTreatments")));
+});
+
 test("margin warnings distinguish incomplete, below-floor and negative margin", () => {
   const incomplete = priceSingle({ ...workshop, costMinor: undefined }, { ruleSet: { ...noControls, marginFloorBp: money.bp(3_500) } });
   const below = priceSingle({ ...workshop, basePriceMinor: money.minor(30_000), costMinor: money.minor(25_000) }, { ruleSet: { ...noControls, marginFloorBp: money.bp(3_500) } });
@@ -353,3 +467,4 @@ test("simple per-unit prices are monotonic and deterministic across a broad quan
     previous = first.quote.lines[0].finalPriceMinor;
   }
 });
+

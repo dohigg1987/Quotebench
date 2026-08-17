@@ -78,7 +78,7 @@ function escapePdf(value: string): string {
 }
 
 function money(value: number, currency: string): string {
-  return `${currency} ${(value / 100).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `${currency} ${(value / 100).toLocaleString(currency === "USD" ? "en-US" : "en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function wrap(value: string, maxCharacters: number): string[] {
@@ -275,3 +275,4 @@ export function renderProposalPdf(input: ProposalPdfInput): Uint8Array {
   pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.slice(1).map((offset) => `${String(offset).padStart(10, "0")} 00000 n `).join("\n")}\ntrailer << /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
   return new TextEncoder().encode(pdf);
 }
+

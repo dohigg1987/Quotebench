@@ -93,12 +93,16 @@ export type PublicQuote = StoredQuote & {
   ruleSetVersion: number;
   pricingSnapshot: {
     currency: string;
-    lines: Array<{ lineId: string; itemName: string; categoryId?:string; subcategoryId?:string; description?:string; serviceSchedule?:string; serviceTerms?:string; quantity: number; unitLabel: string; finalPriceMinor: number }>;
+    lines: Array<{ lineId: string; itemName: string; categoryId?:string; subcategoryId?:string; description?:string; serviceSchedule?:string; serviceTerms?:string; quantity: number; unitLabel: string; finalPriceMinor: number; taxTreatmentLabel?:string; taxRateBp?:number; taxMinor?:number; grossPriceMinor?:number; taxComponents?:Array<{id:string;label:string;jurisdictionCode:string;jurisdictionLevel:string;rateBp:number;taxMinor:number}> }>;
     oneOffSubtotalMinor: number;
     recurringByFrequency: Record<string, number>;
     recurringAnnualisedMinor: number;
+    taxOneOffTotalMinor?:number;
+    taxRecurringByFrequency?:Record<string,number>;
+    grossOneOffTotalMinor?:number;
+    grossRecurringByFrequency?:Record<string,number>;
   };
-  document: { title: string; introduction: string; scopeHeading: string; brandName?: string; brandInitials?: string; proposalTypeId?:string; templateId?:string; depositMinor?: number; options?: Array<{ id: string; label: string }>; pages?:import("./document-store").DocumentPage[]; legalContent?:import("./engagement-store").LegalSnapshot[] };
+  document: { title: string; introduction: string; scopeHeading: string; brandName?: string; brandInitials?: string; proposalTypeId?:string; templateId?:string; depositMinor?: number; options?: Array<{ id: string; label: string }>; pages?:import("./document-store").DocumentPage[]; legalContent?:import("./engagement-store").LegalSnapshot[]; market?:{market:"GB"|"US";countryCode:"GB"|"US";locale:string;currency:string;timezone:string;taxRegistrationStatus:string;pricesIncludeTax:boolean;taxConfiguration?:unknown} };
 };
 
 export type InternalQuote = StoredQuote & {
@@ -743,3 +747,4 @@ export async function declineQuote(token: string, reason: string | null) {
   await emitWebhooks(quote.tenantId, "quote.declined", { reference: quote.reference, reason: declineReason });
   return { ...quote, status: "Declined" as const, declinedAt: new Date().toISOString(), declineReason };
 }
+

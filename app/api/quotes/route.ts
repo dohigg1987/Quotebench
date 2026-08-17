@@ -24,6 +24,7 @@ type SaveQuoteBody = {
   currency?: string;
   regionCode?: string;
   asOfDate?: string;
+  customerTaxExempt?: boolean;
   document?: { title?: string; introduction?: string; scopeHeading?: string; brandName?: string; brandInitials?: string; proposalTypeId?:string; templateId?:string; depositMinor?:number; options?:Array<{id:string;label:string}>; pages?:DocumentPage[] };
 };
 
@@ -40,7 +41,7 @@ export async function GET() {
   try {
     const tenantId = member.tenantId;
     const [quotes, events, entitlement, catalogueWorkspace, rules, clients] = await Promise.all([listQuotes(tenantId), listQuoteEvents(tenantId), getWorkspaceEntitlement(tenantId), listCatalogueWorkspace(tenantId), getRuleWorkspace(tenantId), listClients(tenantId)]);
-    return Response.json({ quotes, events, entitlement, catalogue: catalogueWorkspace.catalogue, catalogueCategories:catalogueWorkspace.categories, proposalTypes:catalogueWorkspace.proposalTypes, ruleSet: rules.published, draftRuleSet: rules.draft, clients, workspace: { id: tenantId, name: member.workspaceName, currency: member.currency, role: member.role } });
+    return Response.json({ quotes, events, entitlement, catalogue: catalogueWorkspace.catalogue, catalogueCategories:catalogueWorkspace.categories, proposalTypes:catalogueWorkspace.proposalTypes, ruleSet: rules.published, draftRuleSet: rules.draft, clients, workspace: { id: tenantId, name: member.workspaceName, currency: member.currency, role: member.role, market:member.market, countryCode:member.countryCode, locale:member.locale, timezone:member.timezone, taxRegistrationStatus:member.taxRegistrationStatus, pricesIncludeTax:member.pricesIncludeTax, taxConfiguration:member.taxConfiguration } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Quote storage failed";
     return Response.json({ error: message }, { status: 500 });
@@ -108,6 +109,7 @@ export async function POST(request: Request) {
       options:(body.document?.options??[]).slice(0,12).map(option=>({id:String(option.id||crypto.randomUUID()),label:String(option.label??"").trim().slice(0,160)})).filter(option=>option.label),
       pages:proposalPages,
       legalContent: legal.snapshots,
+      market:{market:member.market,countryCode:member.countryCode,locale:member.locale,currency:member.currency,timezone:member.timezone,taxRegistrationStatus:member.taxRegistrationStatus,pricesIncludeTax:member.pricesIncludeTax,taxConfiguration:member.taxConfiguration},
     };
 
     const [catalogueItems, rules] = await Promise.all([listCatalogueItems(tenantId), getRuleWorkspace(tenantId)]);
@@ -134,8 +136,11 @@ export async function POST(request: Request) {
       lines,
       quoteDiscountBp: money.bp(quoteDiscount * 100),
       trace: true,
-      regionCode:String(body.regionCode??"GLOBAL").trim().toUpperCase().slice(0,12),
+      regionCode:String(body.regionCode??member.countryCode).trim().toUpperCase().slice(0,12),
       asOfDate:/^\d{4}-\d{2}-\d{2}$/.test(String(body.asOfDate))?String(body.asOfDate):new Date().toISOString().slice(0,10),
+      taxTreatments: member.taxConfiguration.treatments,
+      defaultTaxCode: member.taxConfiguration.defaultTaxCode,
+      customerTaxExempt: body.customerTaxExempt === true,
     });
 
     if (!priced.ok) {
@@ -160,7 +165,7 @@ export async function POST(request: Request) {
       recurringAnnualisedMinor: priced.quote.recurringAnnualisedMinor,
       marginBp: priced.quote.marginBp,
       lineItemsJson: JSON.stringify(body.lines ?? []),
-      answersJson: JSON.stringify({ values: body.answers ?? {}, quoteDiscount, regionCode:String(body.regionCode??"GLOBAL").toUpperCase(), asOfDate:String(body.asOfDate??new Date().toISOString().slice(0,10)) }),
+      answersJson: JSON.stringify({ values: body.answers ?? {}, quoteDiscount, regionCode:String(body.regionCode??member.countryCode).toUpperCase(), asOfDate:String(body.asOfDate??new Date().toISOString().slice(0,10)), customerTaxExempt:body.customerTaxExempt===true }),
       pricingSnapshotJson: JSON.stringify(priced.quote),
       documentJson: JSON.stringify(document),
       ruleSetId: rules.published.id,
@@ -173,3 +178,4 @@ export async function POST(request: Request) {
     return Response.json({ error: message }, { status: 500 });
   }
 }
+

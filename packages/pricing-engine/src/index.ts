@@ -66,6 +66,28 @@ export type RegionalPrice = {
   unitPriceMinor: Minor;
 };
 
+export type TaxJurisdictionLevel = "country" | "state" | "county" | "city" | "district";
+
+export type TaxComponent = {
+  id: string;
+  label: string;
+  jurisdictionCode: string;
+  jurisdictionLevel: TaxJurisdictionLevel;
+  rateBp: BasisPoints;
+};
+
+export type TaxTreatment = {
+  code: string;
+  label: string;
+  countryCode: string;
+  calculation: "exclusive" | "inclusive" | "exempt" | "out_of_scope";
+  components: TaxComponent[];
+};
+
+export type AppliedTaxComponent = TaxComponent & {
+  taxMinor: Minor;
+};
+
 export type IndexationPolicy = {
   method: "fixed" | "cpi" | "rpi" | "custom";
   annualRateBp: BasisPoints;
@@ -175,6 +197,9 @@ export type PriceRequest = {
   trace?: boolean;
   regionCode?: string;
   asOfDate?: string;
+  taxTreatments?: TaxTreatment[];
+  defaultTaxCode?: string;
+  customerTaxExempt?: boolean;
 };
 
 export type WarningCode =
@@ -250,7 +275,10 @@ export type PricedLine = {
   warnings: PriceWarning[];
   trace: TraceStep[];
   taxCode: string;
+  taxTreatmentLabel: string;
+  taxCountryCode: string | null;
   taxRateBp: BasisPoints;
+  taxComponents: AppliedTaxComponent[];
   taxMinor: Minor;
   grossPriceMinor: Minor;
   pricingModel: PricingBasis;
@@ -267,6 +295,8 @@ export type PricedQuote = {
   marginBp: BasisPoints | null;
   warnings: PriceWarning[];
   taxTotalMinor: Minor;
+  taxOneOffTotalMinor: Minor;
+  taxRecurringByFrequency: Record<Frequency, Minor>;
   grossOneOffTotalMinor: Minor;
   grossRecurringByFrequency: Record<Frequency, Minor>;
 };
@@ -351,6 +381,26 @@ function validate(request: PriceRequest): PriceError[] {
   if (!/^[A-Z]{3}$/.test(request.currency)) {
     errors.push({ code: "pricing.validation", path: "currency" });
   }
+  const treatmentCodes = new Set<string>();
+  for (const [treatmentIndex, treatment] of (request.taxTreatments ?? []).entries()) {
+    if (!/^[A-Z0-9][A-Z0-9_-]{0,39}$/.test(treatment.code) || treatmentCodes.has(treatment.code)) {
+      errors.push({ code: "pricing.validation", path: `taxTreatments.${treatmentIndex}.code` });
+    }
+    treatmentCodes.add(treatment.code);
+    if (!/^[A-Z]{2}$/.test(treatment.countryCode)) {
+      errors.push({ code: "pricing.validation", path: `taxTreatments.${treatmentIndex}.countryCode` });
+    }
+    const componentIds = new Set<string>();
+    for (const [componentIndex, component] of treatment.components.entries()) {
+      if (!component.id || componentIds.has(component.id) || component.rateBp < 0 || component.rateBp > 10_000) {
+        errors.push({ code: "pricing.validation", path: `taxTreatments.${treatmentIndex}.components.${componentIndex}` });
+      }
+      componentIds.add(component.id);
+    }
+    if (["exempt", "out_of_scope"].includes(treatment.calculation) && treatment.components.some((component) => component.rateBp !== 0)) {
+      errors.push({ code: "pricing.validation", path: `taxTreatments.${treatmentIndex}.components` });
+    }
+  }
   const quoteDiscount = request.quoteDiscountBp ?? money.bp(0);
   if (quoteDiscount < 0) {
     errors.push({ code: "pricing.invalid_discount", path: "quoteDiscountBp" });
@@ -373,6 +423,9 @@ function validate(request: PriceRequest): PriceError[] {
     const lineDiscount = line.discountBp ?? money.bp(0);
     if (lineDiscount < 0) {
       errors.push({ code: "pricing.invalid_discount", lineId: line.lineId });
+    }
+    if (line.item.taxRateBp !== undefined && (line.item.taxRateBp < 0 || line.item.taxRateBp > 10_000)) {
+      errors.push({ code: "pricing.validation", lineId: line.lineId, path: "item.taxRateBp" });
     }
     const combinedDiscount = Math.round(
       10_000 - ((10_000 - lineDiscount) * (10_000 - quoteDiscount)) / 10_000,
@@ -427,6 +480,77 @@ function calculateMargin(finalPrice: Minor, item: CatalogueItem, quantity: numbe
   if (item.costMinor === undefined || finalPrice === 0) return null;
   const cost = item.pricingBasis === "fixed" ? item.costMinor : money.multiply(item.costMinor, quantity);
   return money.bp(Math.round(((finalPrice - cost) * 10_000) / finalPrice));
+}
+
+function calculateTax(request: PriceRequest, item: CatalogueItem, taxableMinor: Minor) {
+  if (request.customerTaxExempt) {
+    return {
+      code: "CUSTOMER_EXEMPT",
+      label: "Customer exemption",
+      countryCode: null,
+      rateBp: money.bp(0),
+      components: [] as AppliedTaxComponent[],
+      taxMinor: money.minor(0),
+      grossMinor: taxableMinor,
+    };
+  }
+
+  const code = item.taxCode ?? request.defaultTaxCode ?? "OUT_OF_SCOPE";
+  const treatment = request.taxTreatments?.find((candidate) => candidate.code === code)
+    ?? (request.taxTreatments?.length ? request.taxTreatments.find((candidate) => candidate.code === request.defaultTaxCode) : undefined);
+  if (!treatment) {
+    const rateBp = item.taxRateBp ?? money.bp(0);
+    const taxMinor = item.pricesIncludeTax
+      ? money.minor(Math.round(taxableMinor - taxableMinor * 10_000 / (10_000 + rateBp)))
+      : money.percentage(taxableMinor, rateBp);
+    return {
+      code,
+      label: code === "OUT_OF_SCOPE" ? "Outside scope" : code,
+      countryCode: null,
+      rateBp,
+      components: rateBp === 0 ? [] : [{ id: code, label: code, jurisdictionCode: "LEGACY", jurisdictionLevel: "country" as const, rateBp, taxMinor }],
+      taxMinor,
+      grossMinor: item.pricesIncludeTax ? taxableMinor : money.add(taxableMinor, taxMinor),
+    };
+  }
+
+  const totalRateBp = money.bp(treatment.components.reduce((total, component) => total + component.rateBp, 0));
+  if (["exempt", "out_of_scope"].includes(treatment.calculation) || totalRateBp === 0) {
+    return {
+      code: treatment.code,
+      label: treatment.label,
+      countryCode: treatment.countryCode,
+      rateBp: totalRateBp,
+      components: treatment.components.map((component) => ({ ...component, taxMinor: money.minor(0) })),
+      taxMinor: money.minor(0),
+      grossMinor: taxableMinor,
+    };
+  }
+
+  if (treatment.calculation === "inclusive") {
+    const taxMinor = money.minor(Math.round(taxableMinor - taxableMinor * 10_000 / (10_000 + totalRateBp)));
+    let allocated = money.minor(0);
+    const components = treatment.components.map((component, index) => {
+      const componentTax = index === treatment.components.length - 1
+        ? money.minor(taxMinor - allocated)
+        : money.minor(Math.round(taxMinor * component.rateBp / totalRateBp));
+      allocated = money.add(allocated, componentTax);
+      return { ...component, taxMinor: componentTax };
+    });
+    return { code: treatment.code, label: treatment.label, countryCode: treatment.countryCode, rateBp: totalRateBp, components, taxMinor, grossMinor: taxableMinor };
+  }
+
+  const components = treatment.components.map((component) => ({ ...component, taxMinor: money.percentage(taxableMinor, component.rateBp) }));
+  const taxMinor = components.reduce((total, component) => money.add(total, component.taxMinor), money.minor(0));
+  return {
+    code: treatment.code,
+    label: treatment.label,
+    countryCode: treatment.countryCode,
+    rateBp: totalRateBp,
+    components,
+    taxMinor,
+    grossMinor: money.add(taxableMinor, taxMinor),
+  };
 }
 
 function priceLine(request: PriceRequest, line: RequestLine): PricedLine | PriceError {
@@ -532,11 +656,7 @@ function priceLine(request: PriceRequest, line: RequestLine): PricedLine | Price
     warnings.push({ code: "pricing.margin_below_floor", lineId: line.lineId });
   }
 
-  const taxRate = line.item.taxRateBp ?? money.bp(0);
-  const taxMinor = line.item.pricesIncludeTax
-    ? money.minor(Math.round(running - running * 10_000 / (10_000 + taxRate)))
-    : money.percentage(running, taxRate);
-  const grossPriceMinor = line.item.pricesIncludeTax ? running : money.add(running, taxMinor);
+  const tax = calculateTax(request, line.item, running);
 
   return {
     lineId: line.lineId,
@@ -558,10 +678,13 @@ function priceLine(request: PriceRequest, line: RequestLine): PricedLine | Price
     marginBp,
     warnings,
     trace,
-    taxCode: line.item.taxCode ?? "OUT_OF_SCOPE",
-    taxRateBp: taxRate,
-    taxMinor,
-    grossPriceMinor,
+    taxCode: tax.code,
+    taxTreatmentLabel: tax.label,
+    taxCountryCode: tax.countryCode,
+    taxRateBp: tax.rateBp,
+    taxComponents: tax.components,
+    taxMinor: tax.taxMinor,
+    grossPriceMinor: tax.grossMinor,
     pricingModel: line.item.pricingBasis,
   };
 }
@@ -584,6 +707,8 @@ export function price(request: PriceRequest): PriceResult {
         marginBp: null,
         warnings: [{ code: "pricing.empty_basket" }],
         taxTotalMinor: money.minor(0),
+        taxOneOffTotalMinor: money.minor(0),
+        taxRecurringByFrequency: emptyFrequencyTotals(),
         grossOneOffTotalMinor: money.minor(0),
         grossRecurringByFrequency: emptyFrequencyTotals(),
       },
@@ -596,20 +721,24 @@ export function price(request: PriceRequest): PriceResult {
 
   const lines = lineResults as PricedLine[];
   const recurringByFrequency = emptyFrequencyTotals();
+  const taxRecurringByFrequency = emptyFrequencyTotals();
   const grossRecurringByFrequency = emptyFrequencyTotals();
   let oneOffSubtotal = money.minor(0);
   let grossOneOffTotal = money.minor(0);
   let taxTotal = money.minor(0);
+  let taxOneOffTotal = money.minor(0);
   for (const line of lines) {
     taxTotal = money.add(taxTotal, line.taxMinor);
     if (line.recurrence === "one_off") {
       oneOffSubtotal = money.add(oneOffSubtotal, line.finalPriceMinor);
+      taxOneOffTotal = money.add(taxOneOffTotal, line.taxMinor);
       grossOneOffTotal = money.add(grossOneOffTotal, line.grossPriceMinor);
     } else {
       recurringByFrequency[line.recurrence] = money.add(
         recurringByFrequency[line.recurrence],
         line.finalPriceMinor,
       );
+      taxRecurringByFrequency[line.recurrence] = money.add(taxRecurringByFrequency[line.recurrence], line.taxMinor);
       grossRecurringByFrequency[line.recurrence] = money.add(grossRecurringByFrequency[line.recurrence], line.grossPriceMinor);
     }
   }
@@ -671,6 +800,8 @@ export function price(request: PriceRequest): PriceResult {
       marginBp,
       warnings,
       taxTotalMinor: taxTotal,
+      taxOneOffTotalMinor: taxOneOffTotal,
+      taxRecurringByFrequency,
       grossOneOffTotalMinor: grossOneOffTotal,
       grossRecurringByFrequency,
     },
@@ -687,3 +818,4 @@ function emptyFrequencyTotals(): Record<Frequency, Minor> {
     annually: money.minor(0),
   };
 }
+

@@ -11,6 +11,7 @@ interface QuoteBenchImagesBinding {
 
 declare namespace Cloudflare {
   interface Env {
+    [key: string]: unknown;
     ASSETS: Fetcher;
     BUCKET: R2Bucket;
     DB?: D1Database;
@@ -29,5 +30,16 @@ declare namespace Cloudflare {
     STRIPE_PRICE_SCALE?: string;
     STRIPE_SECRET_KEY?: string;
     STRIPE_WEBHOOK_SECRET?: string;
+    INTEGRATION_ENCRYPTION_KEY?: string;
+    COOKIE_ENCRYPTION_KEY?: string;
+    HUBSPOT_CLIENT_ID?: string;
+    HUBSPOT_CLIENT_SECRET?: string;
+    SALESFORCE_CLIENT_ID?: string;
+    SALESFORCE_CLIENT_SECRET?: string;
+    XERO_CLIENT_ID?: string;
+    XERO_CLIENT_SECRET?: string;
+    QUICKBOOKS_CLIENT_ID?: string;
+    QUICKBOOKS_CLIENT_SECRET?: string;
   }
 }
+
