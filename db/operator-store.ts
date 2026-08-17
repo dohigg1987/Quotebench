@@ -44,6 +44,29 @@ export async function getPlatformOverview(filters: { search?: string; status?: s
     FROM tenants t LEFT JOIN billing_subscriptions s ON s.tenant_id=t.id LEFT JOIN tenant_cohorts c ON c.tenant_id=t.id
     LEFT JOIN tenant_entitlement_overrides o ON o.tenant_id=t.id AND (o.expires_at IS NULL OR o.expires_at>CURRENT_TIMESTAMP)
     ORDER BY CASE t.status WHEN 'Active' THEN 0 WHEN 'Suspended' THEN 1 ELSE 2 END,t.created_at DESC LIMIT 250`).all<Record<string, unknown>>();
+  const [operations, recentBilling, recentSecurity, recentAdministration] = await Promise.all([
+    db.prepare(`SELECT
+      (SELECT COUNT(*) FROM workspace_members WHERE status='Active') AS active_users,
+      (SELECT COUNT(*) FROM quotes WHERE created_at>=datetime('now','-24 hours')) AS quotes_24h,
+      (SELECT COUNT(*) FROM quote_recipients WHERE created_at>=datetime('now','-24 hours')) AS recipients_24h,
+      (SELECT COUNT(*) FROM pdf_jobs WHERE status='Failed' AND updated_at>=datetime('now','-24 hours')) AS failed_pdfs_24h,
+      (SELECT COUNT(*) FROM pdf_jobs WHERE status IN ('Queued','Processing')) AS pending_pdfs,
+      (SELECT COUNT(*) FROM billing_events WHERE outcome!='processed' AND created_at>=datetime('now','-24 hours')) AS billing_failures_24h,
+      (SELECT COUNT(*) FROM security_events WHERE outcome NOT IN ('success','allowed') AND created_at>=datetime('now','-24 hours')) AS security_failures_24h,
+      (SELECT COUNT(*) FROM api_access_log WHERE outcome!='authorised' AND created_at>=datetime('now','-24 hours')) AS api_denials_24h,
+      (SELECT COALESCE(SUM(amount_paid_minor),0) FROM billing_invoices WHERE paid_at>=datetime('now','start of month')) AS collected_month_minor,
+      (SELECT COALESCE(SUM(amount_due_minor),0) FROM billing_invoices WHERE status NOT IN ('paid','void','uncollectible')) AS outstanding_minor`).first<Record<string, unknown>>(),
+    db.prepare("SELECT e.id,e.tenant_id,t.name AS tenant_name,e.provider_event_id,e.event_type,e.outcome,e.created_at FROM billing_events e LEFT JOIN tenants t ON t.id=e.tenant_id ORDER BY e.created_at DESC LIMIT 8").all<Record<string, unknown>>(),
+    db.prepare("SELECT e.id,e.tenant_id,t.name AS tenant_name,e.actor_email,e.event_type,e.outcome,e.created_at FROM security_events e LEFT JOIN tenants t ON t.id=e.tenant_id ORDER BY e.created_at DESC LIMIT 8").all<Record<string, unknown>>(),
+    db.prepare("SELECT e.id,e.tenant_id,t.name AS tenant_name,e.actor_email,e.action AS event_type,e.resource_type AS outcome,e.created_at FROM platform_admin_events e LEFT JOIN tenants t ON t.id=e.tenant_id ORDER BY e.created_at DESC LIMIT 8").all<Record<string, unknown>>(),
+  ]);
+  let stripeConfiguration = { secretKey: false, webhook: false, starterPrice: false, professionalPrice: false, scalePrice: false };
+  let release = { environment: "unknown", commit: "unknown", versionId: "unknown" };
+  try {
+    const { env } = await import("cloudflare:workers") as { env: Record<string, unknown> & { CF_VERSION_METADATA?: { id?: string } } };
+    stripeConfiguration = { secretKey:Boolean(env.STRIPE_SECRET_KEY), webhook:Boolean(env.STRIPE_WEBHOOK_SECRET), starterPrice:Boolean(env.STRIPE_PRICE_STARTER), professionalPrice:Boolean(env.STRIPE_PRICE_PROFESSIONAL), scalePrice:Boolean(env.STRIPE_PRICE_SCALE) };
+    release = { environment:String(env.APP_ENV??"unknown"), commit:String(env.BUILD_COMMIT_SHA??"unknown"), versionId:String(env.CF_VERSION_METADATA?.id??"unknown") };
+  } catch { /* Local tests do not provide the Cloudflare runtime binding. */ }
   const search = filters.search?.trim().toLowerCase();
   type PortfolioRow = Record<string, unknown> & { effective_plan: PlanName; monthly_recurring_minor: number };
   const customers = rows.results.map(row => ({ ...row, effective_plan: computedPlan(row), monthly_recurring_minor: row.subscription_status === "active" ? PLAN_MONTHLY_PRICE_MINOR[computedPlan(row)] : 0 }) as PortfolioRow)
@@ -51,6 +74,7 @@ export async function getPlatformOverview(filters: { search?: string; status?: s
     .filter(row => !filters.status || filters.status === "all" || row.status === filters.status)
     .filter(row => !filters.plan || filters.plan === "all" || row.effective_plan === filters.plan);
   const all = rows.results.map(row => ({ ...row, effective_plan: computedPlan(row), monthly_recurring_minor: row.subscription_status === "active" ? PLAN_MONTHLY_PRICE_MINOR[computedPlan(row)] : 0 }) as PortfolioRow);
+  const planMix = (["Trial", "Starter", "Professional", "Scale"] as PlanName[]).map(planName => ({ planName, customers: all.filter(row => row.effective_plan === planName).length, monthlyPriceMinor: PLAN_MONTHLY_PRICE_MINOR[planName] }));
   return {
     generatedAt: new Date().toISOString(), customers,
     totals: {
@@ -59,6 +83,10 @@ export async function getPlatformOverview(filters: { search?: string; status?: s
       monthlyRecurringMinor: all.filter(row => row.subscription_status === "active").reduce((sum, row) => sum + PLAN_MONTHLY_PRICE_MINOR[row.effective_plan as PlanName], 0),
       storageBytes: all.reduce((sum, row) => sum + Number(row.storage_bytes ?? 0), 0),
     },
+    operations: operations ?? {}, planMix, stripeConfiguration, release,
+    recentBilling: recentBilling.results,
+    recentSecurity: recentSecurity.results,
+    recentAdministration: recentAdministration.results,
   };
 }
 
@@ -138,3 +166,4 @@ export async function addOperatorNote(tenantId: string, body: string, actorEmail
 
 export async function createCustomerBillingPortal(tenantId: string, actorEmail: string, returnUrl: string, reason: string) { const url = await createStripePortal(tenantId, returnUrl); await logAdminAction({ tenantId, actorEmail, action: "billing.portal_created", resourceType: "billing_customer", resourceId: tenantId, reason }); return url; }
 export async function exportPlatformCustomer(tenantId: string, actorEmail: string, reason: string) { const archive = await exportTenantArchive(tenantId); await logAdminAction({ tenantId, actorEmail, action: "tenant.archive_exported", resourceType: "tenant", resourceId: tenantId, reason, after: { integritySha256: archive.integritySha256 } }); return archive; }
+

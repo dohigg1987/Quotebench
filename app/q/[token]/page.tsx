@@ -50,7 +50,7 @@ export default async function RecipientQuotePage({ params }: { params: Promise<{
     title: quote.document.title || "Transformation delivery partnership",
     introduction: quote.document.introduction || "This proposal combines focused strategy, delivery capacity and an ongoing advisory relationship.",
     scopeHeading: quote.document.scopeHeading || "A practical route to measurable change",
-    brandName: quote.document.brandName || "Finance Advisory Partners",
+    brandName: quote.document.brandName || "Commercial proposal",
     brandInitials: quote.document.brandInitials || "FAP",
   };
 
