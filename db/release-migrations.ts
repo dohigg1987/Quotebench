@@ -33,6 +33,25 @@ export const RELEASE_MIGRATIONS: ReleaseMigration[] = [
     description: "Add tenant market, localisation, tax, durable notification and connector records.",
     backwardCompatible: true,
     statements: [
+      `CREATE TABLE IF NOT EXISTS tenants (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        currency TEXT NOT NULL,
+        market TEXT NOT NULL DEFAULT 'GB',
+        country_code TEXT NOT NULL DEFAULT 'GB',
+        locale TEXT NOT NULL DEFAULT 'en-GB',
+        timezone TEXT NOT NULL DEFAULT 'Europe/London',
+        tax_registration_status TEXT NOT NULL DEFAULT 'registered',
+        prices_include_tax INTEGER NOT NULL DEFAULT 0,
+        tax_configuration_json TEXT NOT NULL DEFAULT '{}',
+        status TEXT NOT NULL DEFAULT 'Active',
+        tracking_enabled INTEGER NOT NULL DEFAULT 1,
+        deleted_at TEXT,
+        purge_after TEXT,
+        billing_anniversary_day INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
       "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'GB'",
       "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS country_code TEXT NOT NULL DEFAULT 'GB'",
       "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS locale TEXT NOT NULL DEFAULT 'en-GB'",
@@ -98,4 +117,3 @@ export function destructiveStatements(migrations = RELEASE_MIGRATIONS) {
     .filter((statement) => DESTRUCTIVE_MIGRATION_PATTERNS.some((pattern) => pattern.test(statement)))
     .map((statement) => ({ migration: migration.id, statement })));
 }
-
